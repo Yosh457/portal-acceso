@@ -241,6 +241,7 @@ def categorias():
             flash('El nombre de la categoría es obligatorio.', 'danger')
             return redirect(url_for('admin.categorias'))
             
+        # Validación Backend: Evitar nombres duplicados
         if CategoriaAplicacion.query.filter_by(nombre=nombre).first():
             flash(f'Ya existe la categoría "{nombre}".', 'warning')
             return redirect(url_for('admin.categorias'))
@@ -262,7 +263,7 @@ def categorias():
             
         return redirect(url_for('admin.categorias'))
 
-    # Paginación y Listado
+    # Paginación y Listado (Ordenamiento Secundario)
     page = request.args.get('page', 1, type=int)
     busqueda = request.args.get('busqueda', '')
     
@@ -270,7 +271,7 @@ def categorias():
     if busqueda:
         query = query.filter(CategoriaAplicacion.nombre.ilike(f'%{busqueda}%'))
         
-    pagination = query.order_by(CategoriaAplicacion.orden).paginate(page=page, per_page=10, error_out=False)
+    pagination = query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
     
     return render_template('admin/categorias.html', pagination=pagination, busqueda=busqueda)
 
@@ -284,6 +285,7 @@ def editar_categoria(id):
         flash('El nombre es obligatorio.', 'danger')
         return redirect(url_for('admin.categorias'))
 
+    # Validación Backend: Evitar nombres duplicados excluyendo la actual
     existe = CategoriaAplicacion.query.filter(CategoriaAplicacion.nombre == nombre, CategoriaAplicacion.id != id).first()
     if existe:
         flash(f'Ya existe otra categoría llamada "{nombre}".', 'warning')
@@ -321,7 +323,7 @@ def toggle_categoria(id):
 
 @admin_bp.route('/aplicaciones', methods=['GET', 'POST'])
 def aplicaciones():
-    categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden).all()
+    categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
     tipos = TipoAplicacion.query.filter_by(activo=True).all()
     
     if request.method == 'POST':
@@ -335,6 +337,11 @@ def aplicaciones():
             flash('Faltan campos obligatorios.', 'danger')
             return redirect(url_for('admin.aplicaciones'))
             
+        # Validación Backend: Evitar nombres o slugs duplicados
+        if Aplicacion.query.filter_by(nombre=nombre).first():
+            flash(f'Ya existe una aplicación registrada con el nombre "{nombre}".', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+
         if Aplicacion.query.filter_by(slug=slug).first():
             flash('El slug especificado ya existe en otra aplicación.', 'danger')
             return redirect(url_for('admin.aplicaciones'))
@@ -361,7 +368,7 @@ def aplicaciones():
             
         return redirect(url_for('admin.aplicaciones'))
 
-    # Paginación y Listado
+    # Paginación y Listado (Ordenamiento Secundario)
     page = request.args.get('page', 1, type=int)
     cat_filtro = request.args.get('categoria_id', '')
     busqueda = request.args.get('busqueda', '')
@@ -372,7 +379,7 @@ def aplicaciones():
     if busqueda:
         query = query.filter(or_(Aplicacion.nombre.ilike(f'%{busqueda}%'), Aplicacion.slug.ilike(f'%{busqueda}%')))
         
-    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden).paginate(page=page, per_page=10, error_out=False)
+    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden.asc(), Aplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
 
     return render_template('admin/aplicaciones.html', 
                            pagination=pagination, 
@@ -395,8 +402,15 @@ def editar_aplicacion(id):
         flash('Faltan campos obligatorios.', 'danger')
         return redirect(url_for('admin.aplicaciones'))
 
-    existe = Aplicacion.query.filter(Aplicacion.slug == slug, Aplicacion.id != id).first()
-    if existe:
+    # Validación Backend: Evitar nombres duplicados excluyendo la actual
+    existe_nombre = Aplicacion.query.filter(Aplicacion.nombre == nombre, Aplicacion.id != id).first()
+    if existe_nombre:
+        flash(f'Ya existe otra aplicación con el nombre "{nombre}".', 'warning')
+        return redirect(url_for('admin.aplicaciones'))
+
+    # Validación Backend: Evitar slugs duplicados excluyendo la actual
+    existe_slug = Aplicacion.query.filter(Aplicacion.slug == slug, Aplicacion.id != id).first()
+    if existe_slug:
         flash('El slug especificado ya pertenece a otra aplicación.', 'warning')
         return redirect(url_for('admin.aplicaciones'))
 

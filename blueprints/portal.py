@@ -18,20 +18,21 @@ ICONOS = {
 @portal_bp.route('/')
 @login_required
 def index():
-    # 1. Obtener todas las categorías activas, ordenadas
-    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden).all()
+    # 1. Obtener todas las categorías activas, ordenadas (secundario por nombre)
+    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True)\
+        .order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc())
     
     dashboard_data = []
     
     for categoria in categorias_activas:
-        # 2. Filtrar aplicaciones: que pertenezcan a la categoría, estén activas y el usuario esté en la lista de permitidos
+        # 2. Filtrar aplicaciones permitidas, activas, y ordenarlas (secundario por nombre)
         aplicaciones = Aplicacion.query.filter(
             Aplicacion.categoria_id == categoria.id,
             Aplicacion.activo == True,
             Aplicacion.usuarios_permitidos.any(id=current_user.id)
-        ).order_by(Aplicacion.orden).all()
+        ).order_by(Aplicacion.orden.asc(), Aplicacion.nombre.asc()).all()
         
-        # 3. Solo agregar la categoría al dashboard si tiene al menos 1 aplicación visible para el usuario
+        # 3. Solo agregar la categoría al dashboard si tiene aplicaciones
         if aplicaciones:
             dashboard_data.append({
                 'categoria': categoria,
