@@ -70,8 +70,8 @@ def create_app():
     from blueprints.admin import admin_bp
     app.register_blueprint(admin_bp)
 
-    #from blueprints.portal import portal_bp
-    #app.register_blueprint(portal_bp)
+    from blueprints.portal import portal_bp
+    app.register_blueprint(portal_bp)
 
     # -------------------------------------------------------------------------
     # RUTA RAÍZ

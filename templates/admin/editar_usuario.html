@@ -53,6 +53,39 @@
             </div>
         </div>
 
+        <div class="mt-10 border-t pt-8">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Permisos de Aplicaciones</h3>
+            <p class="text-sm text-gray-500 mb-6">Modifica las aplicaciones a las que este usuario tiene acceso.</p>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {% for cat in categorias %}
+                    {% set apps_activas = cat.aplicaciones | selectattr('activo') | list %}
+                    {% if apps_activas %}
+                    <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
+                        <h4 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center">
+                            <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
+                            {{ cat.nombre }}
+                        </h4>
+                        <div class="space-y-3 mt-4">
+                            {% for app in apps_activas %}
+                            <label class="flex items-start space-x-3 cursor-pointer group">
+                                <div class="flex items-center h-5 mt-0.5">
+                                    <input type="checkbox" name="aplicaciones" value="{{ app.id }}"
+                                           class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                           {% if usuario and app in usuario.aplicaciones_permitidas %}checked{% endif %}>
+                                </div>
+                                <div class="text-sm">
+                                    <span class="font-medium text-gray-700 group-hover:text-blue-600 transition-colors">{{ app.nombre }}</span>
+                                </div>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
         <div class="flex justify-end gap-4 pt-6 border-t border-gray-100 mt-8">
             <a href="{{ url_for('admin.panel') }}" class="px-6 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition">Cancelar</a>
             <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition">Guardar Cambios</button>

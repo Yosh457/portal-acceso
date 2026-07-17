@@ -12,10 +12,10 @@ def obtener_hora_chile():
     return datetime.now(cl_tz)
 
 # ==============================================================================
-# TABLA INTERMEDIA (MUCHOS A MUCHOS)
+# TABLA INTERMEDIA (MUCHOS A MUCHOS: USUARIOS - APLICACIONES)
 # ==============================================================================
-aplicaciones_roles = db.Table('aplicaciones_roles',
-    db.Column('rol_id', db.Integer, db.ForeignKey('roles_aplicacion.id', ondelete='CASCADE'), primary_key=True),
+aplicaciones_usuarios = db.Table('aplicaciones_usuarios',
+    db.Column('usuario_id', db.Integer, db.ForeignKey('usuarios.id', ondelete='CASCADE'), primary_key=True),
     db.Column('aplicacion_id', db.Integer, db.ForeignKey('aplicaciones.id', ondelete='CASCADE'), primary_key=True)
 )
 
@@ -28,11 +28,6 @@ class RolAplicacion(db.Model):
     nombre = db.Column(db.String(50), unique=True, nullable=False)
 
     usuarios = db.relationship('Usuario', back_populates='rol')
-    aplicaciones_permitidas = db.relationship(
-        'Aplicacion', 
-        secondary=aplicaciones_roles, 
-        back_populates='roles_permitidos'
-    )
 
 # ==============================================================================
 # USUARIOS
@@ -53,6 +48,13 @@ class Usuario(db.Model, UserMixin):
 
     rol = db.relationship('RolAplicacion', back_populates='usuarios')
     logs = db.relationship('LogSistema', back_populates='usuario')
+    
+    # Nueva relación con Aplicaciones
+    aplicaciones_permitidas = db.relationship(
+        'Aplicacion', 
+        secondary=aplicaciones_usuarios, 
+        back_populates='usuarios_permitidos'
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -113,9 +115,10 @@ class Aplicacion(db.Model):
     categoria = db.relationship('CategoriaAplicacion', back_populates='aplicaciones')
     tipo_aplicacion = db.relationship('TipoAplicacion', back_populates='aplicaciones')
     
-    roles_permitidos = db.relationship(
-        'RolAplicacion', 
-        secondary=aplicaciones_roles, 
+    # Nueva relación con Usuarios
+    usuarios_permitidos = db.relationship(
+        'Usuario', 
+        secondary=aplicaciones_usuarios, 
         back_populates='aplicaciones_permitidas'
     )
 
