@@ -1,4 +1,6 @@
 # blueprints/admin.py
+import re
+import unicodedata
 from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 from sqlalchemy import or_
@@ -14,6 +16,22 @@ from utils import registrar_log_sistema, admin_required, enviar_credenciales_nue
 
 # Instanciamos el blueprint
 admin_bp = Blueprint('admin', __name__, template_folder='../templates', url_prefix='/admin')
+
+# Helper para normalizar slugs en el backend
+def normalizar_slug(texto):
+    """
+    Convierte el texto a snake_case seguro para usar como slug.
+    Ej: 'Sistema Inventario TICs' -> 'sistema_inventario_tics'
+    """
+    # Eliminar acentos
+    texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
+    # Convertir a minúsculas
+    texto = texto.lower()
+    # Dejar solo alfanuméricos, espacios y guiones bajos
+    texto = re.sub(r'[^a-z0-9\s_]', '', texto)
+    # Reemplazar uno o más espacios/guiones bajos por un solo guion bajo
+    texto = re.sub(r'[\s_]+', '_', texto).strip('_')
+    return texto
 
 # --- PROTECCIÓN GLOBAL DEL BLUEPRINT ---
 @admin_bp.before_request
@@ -323,19 +341,34 @@ def toggle_categoria(id):
 
 @admin_bp.route('/aplicaciones', methods=['GET', 'POST'])
 def aplicaciones():
-    categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
+    # Solo mostrar categorías activas para crear nuevas apps
+    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
     tipos = TipoAplicacion.query.filter_by(activo=True).all()
     
     if request.method == 'POST':
         nombre = request.form.get('nombre', '').strip()
-        slug = request.form.get('slug', '').strip().lower()
+        slug_raw = request.form.get('slug', '').strip()
         url_destino = request.form.get('url_destino', '').strip()
         cat_id = request.form.get('categoria_id')
         tipo_id = request.form.get('tipo_aplicacion_id')
         
-        if not all([nombre, slug, url_destino, cat_id, tipo_id]):
+        if not all([nombre, slug_raw, url_destino, cat_id, tipo_id]):
             flash('Faltan campos obligatorios.', 'danger')
             return redirect(url_for('admin.aplicaciones'))
+        
+        # Validación de URL simple: obligatorio http:// o https://
+        if not url_destino.startswith(('http://', 'https://')):
+            flash('La URL de destino debe comenzar con http:// o https://', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        # Validar que la categoría de destino está activa
+        cat_obj = CategoriaAplicacion.query.get(cat_id)
+        if not cat_obj or not cat_obj.activo:
+            flash('No puedes registrar una aplicación en una categoría inactiva o inexistente.', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        # Normalización Backend a snake_case
+        slug = normalizar_slug(slug_raw)
             
         # Validación Backend: Evitar nombres o slugs duplicados
         if Aplicacion.query.filter_by(nombre=nombre).first():
@@ -343,13 +376,13 @@ def aplicaciones():
             return redirect(url_for('admin.aplicaciones'))
 
         if Aplicacion.query.filter_by(slug=slug).first():
-            flash('El slug especificado ya existe en otra aplicación.', 'danger')
+            flash(f'El slug "{slug}" ya existe en otra aplicación.', 'danger')
             return redirect(url_for('admin.aplicaciones'))
 
         try:
             nueva_app = Aplicacion(
                 nombre=nombre,
-                slug=slug,
+                slug=slug, # Se guarda el normalizado
                 descripcion=request.form.get('descripcion', '').strip(),
                 version=request.form.get('version', '').strip(),
                 url_destino=url_destino,
@@ -369,6 +402,7 @@ def aplicaciones():
         return redirect(url_for('admin.aplicaciones'))
 
     # Paginación y Listado (Ordenamiento Secundario)
+    todas_categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
     page = request.args.get('page', 1, type=int)
     cat_filtro = request.args.get('categoria_id', '')
     busqueda = request.args.get('busqueda', '')
@@ -383,7 +417,8 @@ def aplicaciones():
 
     return render_template('admin/aplicaciones.html', 
                            pagination=pagination, 
-                           categorias=categorias,
+                           categorias=categorias_activas, # Para los selects de creación/edición
+                           todas_categorias=todas_categorias, # Para el filtro general
                            tipos=tipos,
                            cat_filtro=cat_filtro,
                            busqueda=busqueda)
@@ -393,13 +428,22 @@ def editar_aplicacion(id):
     app_obj = Aplicacion.query.get_or_404(id)
     
     nombre = request.form.get('nombre', '').strip()
-    slug = request.form.get('slug', '').strip().lower()
+    # El slug NO se recibe del POST porque es de solo lectura (inmutable)
     url_destino = request.form.get('url_destino', '').strip()
     cat_id = request.form.get('categoria_id')
     tipo_id = request.form.get('tipo_aplicacion_id')
 
-    if not all([nombre, slug, url_destino, cat_id, tipo_id]):
+    if not all([nombre, url_destino, cat_id, tipo_id]):
         flash('Faltan campos obligatorios.', 'danger')
+        return redirect(url_for('admin.aplicaciones'))
+    
+    if not url_destino.startswith(('http://', 'https://')):
+        flash('La URL de destino debe comenzar obligatoriamente con http:// o https://', 'danger')
+        return redirect(url_for('admin.aplicaciones'))
+    
+    cat_obj = CategoriaAplicacion.query.get(cat_id)
+    if not cat_obj or not cat_obj.activo:
+        flash('No se puede mover la aplicación a una categoría inactiva o inexistente.', 'danger')
         return redirect(url_for('admin.aplicaciones'))
 
     # Validación Backend: Evitar nombres duplicados excluyendo la actual
@@ -408,15 +452,9 @@ def editar_aplicacion(id):
         flash(f'Ya existe otra aplicación con el nombre "{nombre}".', 'warning')
         return redirect(url_for('admin.aplicaciones'))
 
-    # Validación Backend: Evitar slugs duplicados excluyendo la actual
-    existe_slug = Aplicacion.query.filter(Aplicacion.slug == slug, Aplicacion.id != id).first()
-    if existe_slug:
-        flash('El slug especificado ya pertenece a otra aplicación.', 'warning')
-        return redirect(url_for('admin.aplicaciones'))
-
     try:
         app_obj.nombre = nombre
-        app_obj.slug = slug
+        # app_obj.slug queda intacto
         app_obj.descripcion = request.form.get('descripcion', '').strip()
         app_obj.version = request.form.get('version', '').strip()
         app_obj.url_destino = url_destino

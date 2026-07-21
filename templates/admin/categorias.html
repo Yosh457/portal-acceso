@@ -52,7 +52,8 @@
                 {# Filtro rápido #}
                 <form method="GET" action="{{ url_for('admin.categorias') }}" class="mb-6 flex gap-2">
                     <input type="text" name="busqueda" value="{{ busqueda }}" class="flex-grow px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Buscar por nombre...">
-                    <button type="submit" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition">Buscar</button>
+                    <a href="{{ url_for('admin.categorias') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center">Limpiar</a>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Buscar</button>
                 </form>
 
                 {# Tabla #}
