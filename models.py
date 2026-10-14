@@ -56,6 +56,11 @@ class Usuario(db.Model, UserMixin):
         back_populates='usuarios_permitidos'
     )
 
+    @property
+    def is_active(self):
+        """Flask-Login respeta el estado real de la cuenta."""
+        return bool(self.activo)
+
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 

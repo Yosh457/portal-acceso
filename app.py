@@ -74,6 +74,12 @@ def create_app():
     app.register_blueprint(portal_bp)
 
     # -------------------------------------------------------------------------
+    # RESTRICCIONES TRANSVERSALES DE SESIÓN
+    # -------------------------------------------------------------------------
+    from utils.decorators import verificar_restricciones_sesion
+    app.before_request(verificar_restricciones_sesion)
+
+    # -------------------------------------------------------------------------
     # RUTA RAÍZ
     # -------------------------------------------------------------------------
     @app.route('/')
@@ -114,7 +120,10 @@ def create_app():
 # Loader de usuario para Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
-    return Usuario.query.get(int(user_id))
+    try:
+        return db.session.get(Usuario, int(user_id))
+    except (TypeError, ValueError):
+        return None
 
 if __name__ == '__main__':
     app = create_app()
