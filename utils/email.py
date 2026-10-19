@@ -7,6 +7,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.utils import formataddr
 from flask import url_for
+from html import escape
+from urllib.parse import urlsplit
+from flask import current_app
 
 # --- PLANTILLA BASE HTML PARA CORREOS (DISEÑO UNIFICADO) ---
 def get_email_template(titulo, contenido):
@@ -93,8 +96,9 @@ def enviar_correo_generico(destinatarios, asunto, cuerpo_html, adjunto_path=None
     recipients = list(dict.fromkeys([r for r in recipients if r]))
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
+        import ssl
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.starttls(context=ssl.create_default_context())
             server.login(remitente, contrasena)
             server.send_message(
                 msg,
@@ -109,44 +113,46 @@ def enviar_correo_generico(destinatarios, asunto, cuerpo_html, adjunto_path=None
 
 # --- FUNCIONES ESPECÍFICAS DE NOTIFICACIÓN ---
 
+def _url_publica(endpoint, **values):
+    """Usa un origen configurado, nunca Host proporcionado por la solicitud."""
+    base = os.getenv('PORTAL_BASE_URL', '').rstrip('/')
+    parsed = urlsplit(base)
+    if parsed.scheme not in ('http', 'https') or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise RuntimeError('Configura PORTAL_BASE_URL (origen HTTP(S) confiable) en .env')
+    if not current_app.debug and parsed.scheme != 'https':
+        raise RuntimeError('Se requiere HTTPS para enviar enlaces fuera de desarrollo')
+    return base + url_for(endpoint, **values)
+
+
 def enviar_correo_reseteo(usuario, token):
-    url = url_for('auth.resetear_clave', token=token, _external=True)
+    try:
+        url = _url_publica('auth.resetear_clave', token=token)
+    except RuntimeError as exc:
+        current_app.logger.error('Configuración correo: %s', exc)
+        return False
+    nombre = escape(usuario.nombre_completo)
     contenido = f"""
-        <p>Hola <strong>{usuario.nombre_completo}</strong>,</p>
-        <p>Hemos recibido una solicitud para restablecer tu contraseña en el <strong>Portal de Acceso Institucional</strong>.</p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{url}" style="background-color: #275c80; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                Restablecer Contraseña
-            </a>
-        </div>
-        <p style="font-size: 13px; color: #666;">El enlace expirará en 1 hora.</p>
+        <p>Hola <strong>{nombre}</strong>,</p>
+        <p>Recibimos una solicitud de recuperación de contraseña del Portal de Acceso.</p>
+        <p><a href="{escape(url, quote=True)}">Restablecer contraseña</a></p>
+        <p>Este enlace expira en una hora y puede utilizarse una sola vez.</p>
     """
-    html = get_email_template("Recuperación de Contraseña", contenido)
-    enviar_correo_generico(usuario.email, 'Restablecimiento de Contraseña - Portal de Acceso', html)
+    return enviar_correo_generico(usuario.email, 'Recuperación de contraseña - Portal de Acceso',
+                                 get_email_template('Recuperación de contraseña', contenido))
 
-def enviar_credenciales_nuevo_usuario(usuario, password_texto_plano):
-    """
-    Envía correo de bienvenida con credenciales al nuevo usuario.
-    """
-    url_login = url_for('auth.login', _external=True)
-    
+
+def enviar_activacion_usuario(usuario, token):
+    try:
+        url = _url_publica('auth.activar_cuenta', token=token)
+    except RuntimeError as exc:
+        current_app.logger.error('Configuración correo: %s', exc)
+        return False
+    nombre = escape(usuario.nombre_completo)
     contenido = f"""
-        <p>Hola <strong>{usuario.nombre_completo}</strong>,</p>
-        <p>Bienvenido al <strong>Portal de Acceso Institucional</strong>. Se ha creado tu cuenta de acceso.</p>
-        
-        <div style="background-color: #f8f9fa; padding: 15px; border-left: 4px solid #275c80; margin: 20px 0; border-radius: 4px;">
-            <p style="margin: 5px 0;"><strong>Usuario (Email):</strong> {usuario.email}</p>
-            <p style="margin: 5px 0;"><strong>Contraseña Temporal:</strong> {password_texto_plano}</p>
-        </div>
-
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{url_login}" style="background-color: #275c80; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                Ingresar al Portal
-            </a>
-        </div>
-        
-        <p style="color: #d9534f; font-size: 13px;"><strong>Importante:</strong> Por seguridad, el sistema te solicitará cambiar esta contraseña al iniciar sesión por primera vez.</p>
+        <p>Hola <strong>{nombre}</strong>,</p>
+        <p>Se creó tu cuenta en el Portal de Acceso Institucional.</p>
+        <p><a href="{escape(url, quote=True)}">Establecer mi contraseña</a></p>
+        <p>El enlace expira en 24 horas y solo puede utilizarse una vez.</p>
     """
-    
-    html = get_email_template("Bienvenido al Portal de Acceso", contenido)
-    return enviar_correo_generico(usuario.email, "Bienvenido - Credenciales de Acceso", html)
+    return enviar_correo_generico(usuario.email, 'Activa tu cuenta - Portal de Acceso',
+                                 get_email_template('Activa tu cuenta', contenido))

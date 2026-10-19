@@ -1,24 +1,14 @@
 # blueprints/auth.py
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_user, logout_user, login_required, current_user
-from datetime import datetime, timedelta
-import pytz
-import secrets
-import re
+from sqlalchemy.exc import SQLAlchemyError
+from utils.security import generar_token, hash_token, ahora_utc, password_valida, ACTIVACION_HORAS, RECUPERACION_HORAS
 
 from models import db, Usuario
 from utils import registrar_log_sistema, enviar_correo_reseteo
 
 # Definimos el Blueprint
 auth_bp = Blueprint('auth', __name__, template_folder='../templates')
-
-# --- VALIDACIONES LOCALES ---
-def es_password_segura(password):
-    """Exige un mínimo de 8 caracteres, al menos una mayúscula y un número."""
-    if len(password) < 8: return False
-    if not re.search(r"[A-Z]", password): return False
-    if not re.search(r"[0-9]", password): return False
-    return True
 
 def obtener_ruta_redireccion(usuario):
     """
@@ -45,7 +35,7 @@ def login():
 
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '').strip()
+        password = request.form.get('password', '')
         
         # Validación básica
         if not email or not password:
@@ -55,7 +45,7 @@ def login():
         usuario = Usuario.query.filter_by(email=email).first()
 
         if usuario:
-            if not usuario.activo:
+            if not usuario.is_active:
                 flash('Tu cuenta está desactivada. Contacta al administrador.', 'danger')
                 return redirect(url_for('auth.login'))
             
@@ -113,8 +103,9 @@ def cambiar_clave():
         
     if request.method == 'POST':
         nueva_password = request.form.get('nueva_password')
+        confirmar = request.form.get('confirmar_password')
 
-        if not es_password_segura(nueva_password):
+        if not password_valida(nueva_password, confirmar):
             flash('Error: La contraseña debe tener 8 caracteres, una mayúscula y un número.', 'danger')
         else:
             current_user.set_password(nueva_password)
@@ -128,62 +119,88 @@ def cambiar_clave():
             
     return render_template('auth/cambiar_clave.html')
 
+@auth_bp.route('/activar-cuenta/<token>', methods=['GET', 'POST'])
+def activar_cuenta(token):
+    if current_user.is_authenticated:
+        return redirect(obtener_ruta_redireccion(current_user))
+    usuario = Usuario.query.filter_by(activacion_token_hash=hash_token(token)).first()
+    if (not usuario or not usuario.activo or not usuario.activacion_pendiente
+            or not usuario.activacion_token_expiracion
+            or usuario.activacion_token_expiracion <= ahora_utc()):
+        flash('El enlace de activación es inválido o ha expirado. Solicita uno nuevo al administrador.', 'warning')
+        return redirect(url_for('auth.login'))
+    if request.method == 'POST':
+        password = request.form.get('nueva_password')
+        confirmar = request.form.get('confirmar_password')
+        if not password_valida(password, confirmar):
+            flash('Verifica la contraseña, su confirmación y los requisitos indicados.', 'danger')
+        else:
+            try:
+                usuario.set_password(password)
+                usuario.activacion_pendiente = False
+                usuario.activacion_token_hash = None
+                usuario.activacion_token_expiracion = None
+                usuario.cambio_clave_requerido = False
+                db.session.commit()
+                registrar_log_sistema('Activación Cuenta', f'Cuenta activada: {usuario.id}')
+                flash('Cuenta activada. Ya puedes iniciar sesión.', 'success')
+                return redirect(url_for('auth.login'))
+            except SQLAlchemyError:
+                db.session.rollback()
+                flash('No fue posible activar la cuenta. Intenta nuevamente.', 'danger')
+    return render_template('auth/activar_cuenta.html')
+
+
 @auth_bp.route('/solicitar-reseteo', methods=['GET', 'POST'])
 def solicitar_reseteo():
     if current_user.is_authenticated:
         return redirect(obtener_ruta_redireccion(current_user))
-
     if request.method == 'POST':
-        email = request.form.get('email')
+        email = request.form.get('email', '').strip().lower()
         usuario = Usuario.query.filter_by(email=email).first()
-        
-        if usuario:
-            token = secrets.token_hex(16)
-            cl_tz = pytz.timezone('America/Santiago')
-            # Expiración en 1 hora
-            expiracion = datetime.now(cl_tz).replace(tzinfo=None) + timedelta(hours=1)
-            
-            usuario.reset_token = token
-            usuario.reset_token_expiracion = expiracion
-            db.session.commit()
-            
-            enviar_correo_reseteo(usuario, token)
-            registrar_log_sistema("Solicitud Reseteo", f"Token generado para {email}")
-            flash(f'Se ha enviado un enlace a {email}', 'success')
-        else:
-            registrar_log_sistema("Solicitud Reseteo Fallida", f"Email no existe: {email}")
-            flash(f'El correo electrónico no se encuentra registrado en el sistema.', 'danger')
-            
+        if usuario and usuario.is_active:
+            token, digest, expiracion = generar_token(RECUPERACION_HORAS)
+            try:
+                usuario.reset_token = digest
+                usuario.reset_token_expiracion = expiracion
+                db.session.commit()
+                if not enviar_correo_reseteo(usuario, token):
+                    registrar_log_sistema('Error Correo Reseteo', f'Fallo al enviar recuperación para ID {usuario.id}')
+                else:
+                    registrar_log_sistema('Solicitud Reseteo', f'Solicitud recibida para ID {usuario.id}')
+            except SQLAlchemyError:
+                db.session.rollback()
+        # Misma respuesta para cuentas existentes, inexistentes, inactivas o pendientes.
+        flash('Si la cuenta existe y está habilitada, recibirás un enlace de recuperación.', 'info')
         return redirect(url_for('auth.login'))
-        
     return render_template('auth/solicitar_reseteo.html')
+
 
 @auth_bp.route('/resetear-clave/<token>', methods=['GET', 'POST'])
 def resetear_clave(token):
     if current_user.is_authenticated:
         return redirect(obtener_ruta_redireccion(current_user))
-
-    usuario = Usuario.query.filter_by(reset_token=token).first()
-    cl_tz = pytz.timezone('America/Santiago')
-    ahora = datetime.now(cl_tz).replace(tzinfo=None)
-    
-    if not usuario or not usuario.reset_token_expiracion or usuario.reset_token_expiracion < ahora:
+    usuario = Usuario.query.filter_by(reset_token=hash_token(token)).first()
+    if (not usuario or not usuario.is_active or not usuario.reset_token_expiracion
+            or usuario.reset_token_expiracion <= ahora_utc()):
         flash('El enlace es inválido o ha expirado.', 'danger')
         return redirect(url_for('auth.solicitar_reseteo'))
-        
     if request.method == 'POST':
-        nueva_password = request.form.get('nueva_password')
-
-        if not es_password_segura(nueva_password):
-            flash('Error: Requisitos de seguridad no cumplidos.', 'danger')
+        password = request.form.get('nueva_password')
+        confirmar = request.form.get('confirmar_password')
+        if not password_valida(password, confirmar):
+            flash('Verifica la contraseña, su confirmación y los requisitos indicados.', 'danger')
         else:
-            usuario.set_password(nueva_password)
-            usuario.reset_token = None
-            usuario.reset_token_expiracion = None
-            db.session.commit()
-            
-            registrar_log_sistema("Recuperación Clave", f"Usuario {usuario.email} recuperó su clave exitosamente.")
-            flash('Tu contraseña ha sido restablecida. Ya puedes iniciar sesión.', 'success')
-            return redirect(url_for('auth.login'))
-        
+            try:
+                usuario.set_password(password)
+                usuario.reset_token = None
+                usuario.reset_token_expiracion = None
+                usuario.cambio_clave_requerido = False
+                db.session.commit()
+                registrar_log_sistema('Recuperación Clave', f'Clave recuperada para ID {usuario.id}')
+                flash('Contraseña restablecida. Inicia sesión nuevamente.', 'success')
+                return redirect(url_for('auth.login'))
+            except SQLAlchemyError:
+                db.session.rollback()
+                flash('No fue posible completar la operación.', 'danger')
     return render_template('auth/resetear_clave.html')
