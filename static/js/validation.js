@@ -59,8 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- EVENT LISTENERS ---
 
     // Escuchamos los eventos 'keyup' en ambos campos de contraseña
-    passwordInput.addEventListener('keyup', validatePassword);
-    confirmPasswordInput.addEventListener('keyup', validatePassword);
+    passwordInput.addEventListener('input', validatePassword);
+    confirmPasswordInput.addEventListener('input', validatePassword);
 
     // Lógica para el botón de mostrar/ocultar contraseña
     togglePassword.addEventListener('click', () => {

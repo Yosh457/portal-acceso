@@ -12,7 +12,9 @@ from models import (
 )
 
 # Utilidades 
-from utils import registrar_log_sistema, admin_required, enviar_credenciales_nuevo_usuario
+from utils import registrar_log_sistema, admin_required, enviar_activacion_usuario
+from utils.security import generar_token, ACTIVACION_HORAS
+from utils.rate_limit import validar_limite
 
 # Instanciamos el blueprint
 admin_bp = Blueprint('admin', __name__, template_folder='../templates', url_prefix='/admin')
@@ -99,31 +101,36 @@ def crear_usuario():
     if request.method == 'POST':
         nombre = request.form.get('nombre_completo', '').strip()
         email = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '').strip()
         rol_id = request.form.get('rol_id')
-        forzar_cambio = request.form.get('forzar_cambio_clave') == '1'
         aplicaciones_ids = request.form.getlist('aplicaciones') # IDs de las apps seleccionadas
         
         # 🔴 Validaciones backend
-        if not nombre or not email or not password or not rol_id:
+        if not nombre or not email or not rol_id:
             flash('Todos los campos obligatorios deben completarse.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, datos_previos=request.form)
+            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
         
         # Validación de email duplicado
         if Usuario.query.filter_by(email=email).first():
             flash('Error: El correo electrónico ya se encuentra registrado.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, datos_previos=request.form)
+            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
 
         try:
+            rol = db.session.get(RolAplicacion, int(rol_id))
+            if rol is None:
+                flash('Selecciona un rol válido.', 'danger')
+                return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
+            token, digest, expiracion = generar_token(ACTIVACION_HORAS)
             nuevo_usuario = Usuario(
                 nombre_completo=nombre,
                 email=email,
                 rol_id=int(rol_id),
-                cambio_clave_requerido=forzar_cambio,
-                activo=True
+                cambio_clave_requerido=False,
+                activo=True,
+                activacion_pendiente=True,
+                activacion_token_hash=digest,
+                activacion_token_expiracion=expiracion,
+                password_hash=None
             )
-            nuevo_usuario.set_password(password)
-            
             # Asignar aplicaciones
             if aplicaciones_ids:
                 apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
@@ -134,16 +141,16 @@ def crear_usuario():
 
             registrar_log_sistema("Creación Usuario", f"Admin creó a {nombre} ({email}).", usuario=current_user)
 
-            if enviar_credenciales_nuevo_usuario(nuevo_usuario, password):
-                flash(f'Usuario creado con éxito. Credenciales enviadas a {email}.', 'success')
+            if enviar_activacion_usuario(nuevo_usuario, token):
+                flash('Usuario creado. Se envió un enlace para establecer su contraseña.', 'success')
             else:
-                flash(f'Usuario creado, pero FALLÓ el envío del correo. Entregar clave manual: {password}', 'warning')
+                flash('Usuario creado, pero el correo de activación no pudo enviarse. Reenvía la invitación.', 'warning')
 
             return redirect(url_for('admin.panel'))
 
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f'Error de base de datos: {str(e)}', 'danger')
+            flash('No fue posible crear la cuenta. Revisa los datos e inténtalo nuevamente.', 'danger')
 
     return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
 
@@ -159,7 +166,6 @@ def editar_usuario(id):
         nombre_nuevo = request.form.get('nombre_completo', '').strip()
         rol_id = request.form.get('rol_id')
         forzar_cambio = request.form.get('forzar_cambio_clave') == '1'
-        password = request.form.get('password', '').strip()
         aplicaciones_ids = request.form.getlist('aplicaciones')
         
         # Validación de duplicidad de email
@@ -171,12 +177,8 @@ def editar_usuario(id):
         usuario.nombre_completo = nombre_nuevo
         usuario.email = email_nuevo
         usuario.rol_id = int(rol_id)
-        usuario.cambio_clave_requerido = forzar_cambio
+        usuario.cambio_clave_requerido = forzar_cambio if not usuario.activacion_pendiente else False
 
-        if password:
-            usuario.set_password(password)
-            flash('Contraseña actualizada correctamente.', 'info')
-            
         # Actualizar permisos de aplicaciones
         if aplicaciones_ids:
             apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
@@ -486,3 +488,26 @@ def toggle_aplicacion(id):
         registrar_log_sistema("Error Cambio Estado Aplicación", f"Error: {str(e)}", usuario=current_user)
         flash("Error al cambiar el estado.", 'danger')
     return redirect(url_for('admin.aplicaciones'))
+
+@admin_bp.route('/reenviar_activacion/<int:id>', methods=['POST'])
+def reenviar_activacion(id):
+    usuario = Usuario.query.get_or_404(id)
+    if not usuario.activo or not usuario.activacion_pendiente:
+        flash('La cuenta no requiere activación o está bloqueada.', 'warning')
+        return redirect(url_for('admin.panel'))
+    # Cuenta destinataria: 3 reenvíos por hora desde cualquier administrador.
+    validar_limite('reenviar_activacion_cuenta', str(usuario.id), 3, 60 * 60)
+    token, digest, expiracion = generar_token(ACTIVACION_HORAS)
+    try:
+        usuario.activacion_token_hash = digest
+        usuario.activacion_token_expiracion = expiracion
+        db.session.commit()
+        registrar_log_sistema('Reenvío Activación', f'Nuevo enlace para ID {usuario.id}', usuario=current_user)
+        if enviar_activacion_usuario(usuario, token):
+            flash('Se envió un nuevo enlace de activación.', 'success')
+        else:
+            flash('No se pudo enviar el correo. Puedes intentar reenviarlo más tarde.', 'warning')
+    except Exception:
+        db.session.rollback()
+        flash('No se pudo renovar el enlace.', 'danger')
+    return redirect(url_for('admin.panel'))

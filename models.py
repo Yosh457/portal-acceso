@@ -37,12 +37,16 @@ class Usuario(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     nombre_completo = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False, index=True)
-    password_hash = db.Column(db.String(255), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=True)
     activo = db.Column(db.Boolean, default=True, nullable=False)
     fecha_creacion = db.Column(db.DateTime, default=obtener_hora_chile, nullable=False)
     cambio_clave_requerido = db.Column(db.Boolean, default=False, nullable=False)
-    reset_token = db.Column(db.String(32), unique=True, nullable=True)
+    # Solo hashes SHA-256; nunca guardar tokens de enlace en claro.
+    reset_token = db.Column(db.String(64), unique=True, nullable=True)
     reset_token_expiracion = db.Column(db.DateTime, nullable=True)
+    activacion_pendiente = db.Column(db.Boolean, default=False, nullable=False)
+    activacion_token_hash = db.Column(db.String(64), unique=True, nullable=True)
+    activacion_token_expiracion = db.Column(db.DateTime, nullable=True)
 
     rol_id = db.Column(db.Integer, db.ForeignKey('roles_aplicacion.id'), nullable=False, index=True)
 
@@ -59,13 +63,13 @@ class Usuario(db.Model, UserMixin):
     @property
     def is_active(self):
         """Flask-Login respeta el estado real de la cuenta."""
-        return bool(self.activo)
+        return bool(self.activo) and not self.activacion_pendiente
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        return bool(self.password_hash) and bool(password) and check_password_hash(self.password_hash, password)
 
 # ==============================================================================
 # LOGS DEL SISTEMA (Auditoría)
