@@ -79,6 +79,9 @@ def create_app():
     from utils.decorators import verificar_restricciones_sesion
     app.before_request(verificar_restricciones_sesion)
 
+    from utils.rate_limit import limitar_autenticacion
+    app.before_request(limitar_autenticacion)
+
     # -------------------------------------------------------------------------
     # RUTA RAÍZ
     # -------------------------------------------------------------------------
@@ -89,6 +92,14 @@ def create_app():
     # -------------------------------------------------------------------------
     # ERRORES Y CACHÉ
     # -------------------------------------------------------------------------
+    @app.errorhandler(429)
+    def muchas_solicitudes(error):
+        from flask import make_response
+        espera = getattr(error, 'retry_after', None) or 60
+        respuesta = make_response(render_template('errors/429.html'), 429)
+        respuesta.headers['Retry-After'] = str(int(espera))
+        return respuesta
+
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
         flash('La sesión expiró. Ingrese nuevamente.', 'warning')
@@ -100,6 +111,7 @@ def create_app():
         response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
         response.headers['Pragma'] = 'no-cache'
         response.headers['Expires'] = '-1'
+        response.headers['Referrer-Policy'] = 'no-referrer'
         return response
 
     # MANEJO DE ERRORES PERSONALIZADOS
