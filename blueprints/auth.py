@@ -158,7 +158,12 @@ def solicitar_reseteo():
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
         usuario = Usuario.query.filter_by(email=email).first()
-        if usuario and usuario.is_active:
+        if (
+            usuario
+            and usuario.is_active
+            and not usuario.activacion_pendiente
+            and usuario.password_hash is not None
+        ):
             token, digest, expiracion = generar_token(RECUPERACION_HORAS)
             try:
                 usuario.reset_token = digest
@@ -181,8 +186,14 @@ def resetear_clave(token):
     if current_user.is_authenticated:
         return redirect(obtener_ruta_redireccion(current_user))
     usuario = Usuario.query.filter_by(reset_token=hash_token(token)).first()
-    if (not usuario or not usuario.is_active or not usuario.reset_token_expiracion
-            or usuario.reset_token_expiracion <= ahora_utc()):
+    if (
+        not usuario
+        or not usuario.is_active
+        or usuario.activacion_pendiente
+        or usuario.password_hash is None
+        or not usuario.reset_token_expiracion
+        or usuario.reset_token_expiracion <= ahora_utc()
+    ):
         flash('El enlace es inválido o ha expirado.', 'danger')
         return redirect(url_for('auth.solicitar_reseteo'))
     if request.method == 'POST':
