@@ -1,5 +1,7 @@
 # blueprints/auth.py
-from flask import Blueprint, render_template, redirect, url_for, flash, request
+import time
+
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
 from flask_login import login_user, logout_user, login_required, current_user
 from sqlalchemy.exc import SQLAlchemyError
 from utils.security import generar_token, hash_token, ahora_utc, password_valida, ACTIVACION_HORAS, RECUPERACION_HORAS
@@ -51,6 +53,8 @@ def login():
             
             if usuario.check_password(password):
                 login_user(usuario)
+                # Referencia inicial de actividad para el control del servidor.
+                session['ultima_actividad'] = time.time()
                 registrar_log_sistema("Inicio de Sesión", f"Acceso exitoso al sistema. Rol: {usuario.rol.nombre}")
 
                 # Bloqueo forzoso si requiere cambio de clave
@@ -69,29 +73,75 @@ def login():
     
     return render_template('auth/login.html')
 
-@auth_bp.route('/logout')
+# Solo se permite renovar mediante una solicitud POST autenticada y con CSRF.
+@auth_bp.route('/sesion/estado', methods=['GET'])
+def estado_sesion():
+    if not current_user.is_authenticated:
+        return jsonify(autenticado=False), 401
+    ultima = session.get('ultima_actividad')
+    limite = current_app.config['SESION_INACTIVIDAD_SEGUNDOS']
+    if not isinstance(ultima, (int, float)):
+        return jsonify(autenticado=False), 401
+    restante = max(0, int(limite - (time.time() - ultima)))
+    return jsonify(autenticado=True, restante_segundos=restante)
+
+@auth_bp.route('/sesion/renovar', methods=['POST'])
+def renovar_sesion():
+    if not current_user.is_authenticated:
+        return jsonify(autenticado=False), 401
+    # La comprobación de expiración se realiza previamente en before_request.
+    session['ultima_actividad'] = time.time()
+    return jsonify(
+        autenticado=True,
+        restante_segundos=current_app.config['SESION_INACTIVIDAD_SEGUNDOS']
+    )
+
+@auth_bp.route('/logout', methods=['POST'])
 @login_required
 def logout():
-    reason = request.args.get('reason')
+    motivo = request.form.get('reason', '')
+    ultima_actividad = session.get('ultima_actividad')
 
-    if reason == 'timeout':
+    ahora = time.time()
+    tiempo_maximo = current_app.config.get(
+        'SESION_INACTIVIDAD_SEGUNDOS',
+        600
+    )
+
+    # Una pequeña tolerancia permite clasificar el cierre
+    # cuando el navegador envía el POST justo antes del límite.
+    cierre_por_inactividad = (
+        motivo == 'timeout'
+        and isinstance(ultima_actividad, (int, float))
+        and ultima_actividad <= ahora
+        and ahora - ultima_actividad >= max(0, tiempo_maximo - 2)
+    )
+
+    if cierre_por_inactividad:
         registrar_log_sistema(
-            "Cierre de Sesión Automático",
-            "Sesión cerrada por inactividad del usuario."
+            'Cierre de Sesión Automático',
+            'Sesión cerrada por inactividad del usuario.'
         )
-        mensaje = 'Su sesión ha expirado por inactividad. Por favor, ingrese nuevamente.'
+
+        mensaje = (
+            'Tu sesión ha expirado por inactividad. '
+            'Por favor, inicia sesión nuevamente.'
+        )
         categoria = 'warning'
+
     else:
         registrar_log_sistema(
-            "Cierre de Sesión",
-            "Usuario salió del sistema manualmente."
+            'Cierre de Sesión',
+            'Usuario salió del sistema manualmente.'
         )
+
         mensaje = 'Has cerrado sesión correctamente.'
         categoria = 'success'
 
     logout_user()
-    flash(mensaje, categoria)
+    session.clear()
 
+    flash(mensaje, categoria)
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/cambiar_clave', methods=['GET', 'POST'])
@@ -150,7 +200,6 @@ def activar_cuenta(token):
                 flash('No fue posible activar la cuenta. Intenta nuevamente.', 'danger')
     return render_template('auth/activar_cuenta.html')
 
-
 @auth_bp.route('/solicitar-reseteo', methods=['GET', 'POST'])
 def solicitar_reseteo():
     if current_user.is_authenticated:
@@ -179,7 +228,6 @@ def solicitar_reseteo():
         flash('Si la cuenta existe y está habilitada, recibirás un enlace de recuperación.', 'info')
         return redirect(url_for('auth.login'))
     return render_template('auth/solicitar_reseteo.html')
-
 
 @auth_bp.route('/resetear-clave/<token>', methods=['GET', 'POST'])
 def resetear_clave(token):

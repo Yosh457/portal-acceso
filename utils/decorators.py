@@ -1,7 +1,9 @@
 # utils/decorators.py
+import time
 from functools import wraps
-from flask import abort, redirect, url_for, flash, request
+from flask import abort, redirect, url_for, flash, request, current_app, session, jsonify
 from flask_login import current_user, logout_user
+from .helpers import registrar_log_sistema
 
 def verificar_restricciones_sesion():
     """Protege todas las rutas con un único control de sesión.
@@ -19,17 +21,63 @@ def verificar_restricciones_sesion():
     # Una cuenta desactivada pierde acceso en su siguiente solicitud.
     if not current_user.is_active:
         logout_user()
+        session.clear()
+        if request.endpoint in ('auth.estado_sesion', 'auth.renovar_sesion'):
+            return jsonify(autenticado=False), 401
         flash('Tu cuenta ha sido desactivada. Contacta al administrador.', 'warning')
         return redirect(url_for('auth.login'))
+
+    # Control de inactividad desde Flask.
+    ahora = time.time()
+    ultima_actividad = session.get('ultima_actividad')
+
+    tiempo_maximo = current_app.config.get(
+        'SESION_INACTIVIDAD_SEGUNDOS',
+        600
+    )
+
+    if (
+        not isinstance(ultima_actividad, (int, float))
+        or ultima_actividad > ahora
+        or ahora - ultima_actividad >= tiempo_maximo
+    ):
+        # Registrar el cierre automático únicamente cuando se confirme que expiró el tiempo de inactividad.
+        if (
+            isinstance(ultima_actividad, (int, float))
+            and ultima_actividad <= ahora
+            and ahora - ultima_actividad >= tiempo_maximo
+        ):
+            registrar_log_sistema(
+                "Cierre de Sesión Automático",
+                "Sesión cerrada por inactividad del usuario."
+            )
+        logout_user()
+        session.clear()
+
+        flash(
+            "Tu sesión ha expirado por inactividad. "
+            "Por favor, inicia sesión nuevamente.",
+            "warning"
+        )
+
+        if request.endpoint in ('auth.estado_sesion', 'auth.renovar_sesion'):
+            return jsonify(autenticado=False), 401
+
+        return redirect(url_for('auth.login'))
+
+    # No renovar la sesión con solicitudes GET ni peticiones automáticas.
+    # Solo auth.renovar_sesion actualiza ultima_actividad tras validar la sesión.
+
+    if current_user.cambio_clave_requerido and request.endpoint == 'auth.renovar_sesion':
+        return jsonify(autenticado=False), 403
 
     # Permitir únicamente actualizar la clave o cerrar sesión durante
     # el cambio inicial obligatorio; aplica tanto a Admin como Funcionario.
     if current_user.cambio_clave_requerido:
-        if request.endpoint not in ('auth.cambiar_clave', 'auth.logout'):
+        if request.endpoint not in ('auth.cambiar_clave', 'auth.logout', 'auth.estado_sesion', 'auth.renovar_sesion'):
             return redirect(url_for('auth.cambiar_clave'))
 
     return None
-
 
 def check_password_change(f):
     """Verifica si el usuario debe cambiar su contraseña obligatoriamente."""
