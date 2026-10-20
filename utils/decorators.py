@@ -27,6 +27,25 @@ def verificar_restricciones_sesion():
         flash('Tu cuenta ha sido desactivada. Contacta al administrador.', 'warning')
         return redirect(url_for('auth.login'))
 
+    # Rechazar cookies de sesión antiguas, incluidas las restauradas
+    # por remember-me de Flask-Login: requieren un marcador vigente
+    # guardado en la cookie de sesión firmada por Flask.
+    version_sesion = session.get('sesion_version')
+    version_actual = current_user.sesion_version
+    if (
+        type(version_sesion) is not int
+        or version_sesion != version_actual
+    ):
+        logout_user()
+        session.clear()
+        if request.endpoint in ('auth.estado_sesion', 'auth.renovar_sesion'):
+            return jsonify(autenticado=False), 401
+        flash(
+            'Tu sesión ya no es válida. Inicia sesión nuevamente.',
+            'warning'
+        )
+        return redirect(url_for('auth.login'))
+
     # Control de inactividad desde Flask.
     ahora = time.time()
     ultima_actividad = session.get('ultima_actividad')

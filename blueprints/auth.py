@@ -55,6 +55,7 @@ def login():
                 login_user(usuario)
                 # Referencia inicial de actividad para el control del servidor.
                 session['ultima_actividad'] = time.time()
+                session['sesion_version'] = usuario.sesion_version
                 registrar_log_sistema("Inicio de Sesión", f"Acceso exitoso al sistema. Rol: {usuario.rol.nombre}")
 
                 # Bloqueo forzoso si requiere cambio de clave
@@ -164,6 +165,7 @@ def cambiar_clave():
             
             registrar_log_sistema("Cambio de Clave", "Usuario actualizó su contraseña obligatoria.")
             logout_user()
+            session.clear()
             flash('Contraseña actualizada correctamente. Ingresa nuevamente.', 'success')
             return redirect(url_for('auth.login'))
             
