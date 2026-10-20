@@ -24,6 +24,9 @@ def create_app():
     if not app.config['SECRET_KEY']:
         raise RuntimeError("Error crítico: No se ha configurado SECRET_KEY en el archivo .env")
 
+    # Duración máxima de inactividad de una sesión autenticada.
+    app.config['SESION_INACTIVIDAD_SEGUNDOS'] = 10 * 60
+
     # -------------------------------------------------------------------------
     # CONFIGURACIÓN DE BASE DE DATOS
     # -------------------------------------------------------------------------

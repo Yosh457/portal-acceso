@@ -47,6 +47,7 @@ class Usuario(db.Model, UserMixin):
     activacion_pendiente = db.Column(db.Boolean, default=False, nullable=False)
     activacion_token_hash = db.Column(db.String(64), unique=True, nullable=True)
     activacion_token_expiracion = db.Column(db.DateTime, nullable=True)
+    sesion_version = db.Column(db.Integer, nullable=False, default=1, server_default='1')
 
     rol_id = db.Column(db.Integer, db.ForeignKey('roles_aplicacion.id'), nullable=False, index=True)
 
@@ -66,7 +67,13 @@ class Usuario(db.Model, UserMixin):
         return bool(self.activo) and not self.activacion_pendiente
 
     def set_password(self, password):
+        # Una contraseña nueva invalida las sesiones previas del usuario.
+        # La primera contraseña de una cuenta pendiente de activación
+        # no necesita invalidar sesiones que aún no existen.
+        tenia_password = self.password_hash is not None
         self.password_hash = generate_password_hash(password)
+        if tenia_password:
+            self.sesion_version = (self.sesion_version or 1) + 1
 
     def check_password(self, password):
         return bool(self.password_hash) and bool(password) and check_password_hash(self.password_hash, password)

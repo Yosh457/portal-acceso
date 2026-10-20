@@ -46,13 +46,16 @@
                     {% endif %}
 
                 {% endif %}
-                <a href="{{ url_for('auth.logout') }}" 
+                <form action="{{ url_for('auth.logout') }}" method="POST" class="inline-flex">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit"
                    class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition shadow-sm">
                     <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
                     Cerrar Sesión
-                </a>
+                    </button>
+                </form>
                 {% endif %}
             </div>
 
@@ -101,7 +104,16 @@
 
     {# --- MODAL DE INACTIVIDAD (Solo logueados) --- #}
     {% if current_user.is_authenticated %}
-    <div id="modal-inactividad" class="fixed inset-0 z-[9999] hidden">
+    <div id="config-sesion"
+         data-estado-url="{{ url_for('auth.estado_sesion') }}"
+         data-renovar-url="{{ url_for('auth.renovar_sesion') }}"
+         data-login-url="{{ url_for('auth.login') }}"
+         data-csrf="{{ csrf_token() }}"
+         data-advertencia-segundos="120" hidden></div>
+    <form id="form-logout-inactividad" method="POST" action="{{ url_for('auth.logout') }}" hidden>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    </form>
+    <div id="modal-inactividad" class="fixed inset-0 z-[9999] hidden" role="dialog" aria-modal="true" aria-labelledby="titulo-inactividad">
         <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
 
         <div class="relative min-h-screen flex items-center justify-center p-4">
@@ -115,7 +127,7 @@
                         </svg>
                     </div>
 
-                    <h3 class="text-xl font-bold text-gray-900">
+                    <h3 id="titulo-inactividad" class="text-xl font-bold text-gray-900">
                         Tu sesión está a punto de expirar
                     </h3>
 
