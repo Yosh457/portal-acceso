@@ -12,21 +12,13 @@ from utils import registrar_log_sistema, enviar_correo_reseteo
 # Definimos el Blueprint
 auth_bp = Blueprint('auth', __name__, template_folder='../templates')
 
+def es_administrador(usuario):
+    """Comprueba si una cuenta está autorizada para administrar el portal."""
+    return bool(usuario.rol and usuario.rol.nombre == 'Admin')
+
 def obtener_ruta_redireccion(usuario):
-    """
-    Define el destino tras login basado en la tabla roles_aplicacion.
-    Mantiene la arquitectura base separando las interfaces según el rol.
-    """
-    if not usuario.rol:
-        return url_for('auth.login')
-    
-    if usuario.rol.nombre == 'Admin':
-        return url_for('admin.panel')
-    
-    if usuario.rol.nombre == 'Funcionario':
-        return url_for('portal.index')
-    
-    return url_for('auth.login')
+    """Las cuentas autenticadas administran el portal; el catálogo es público."""
+    return url_for('admin.panel') if es_administrador(usuario) else url_for('portal.index')
 
 # --- RUTAS DE AUTENTICACIÓN ---
 
@@ -51,7 +43,7 @@ def login():
                 flash('Tu cuenta está desactivada. Contacta al administrador.', 'danger')
                 return redirect(url_for('auth.login'))
             
-            if usuario.check_password(password):
+            if usuario.check_password(password) and es_administrador(usuario):
                 login_user(usuario)
                 # Referencia inicial de actividad para el control del servidor.
                 session['ultima_actividad'] = time.time()
@@ -143,7 +135,7 @@ def logout():
     session.clear()
 
     flash(mensaje, categoria)
-    return redirect(url_for('auth.login'))
+    return redirect(url_for('portal.index'))
 
 @auth_bp.route('/cambiar_clave', methods=['GET', 'POST'])
 @login_required

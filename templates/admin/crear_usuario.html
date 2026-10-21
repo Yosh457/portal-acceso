@@ -1,89 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Crear Nuevo Usuario{% endblock %}
+{% block title %}Crear Administrador{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto my-12 bg-white p-8 rounded-xl shadow-lg">
-    
+<div class="max-w-3xl mx-auto my-12 bg-white p-8 rounded-xl shadow-lg">
     <div class="border-b pb-4 mb-8">
-        <h2 class="text-2xl font-bold text-gray-800">Crear Nuevo Usuario</h2>
-        <p class="text-gray-500 text-sm mt-1">Registra un nuevo usuario para el acceso al Portal.</p>
+        <h2 class="text-2xl font-bold text-gray-800">Crear Administrador</h2>
+        <p class="text-sm text-gray-500 mt-1">Registra una cuenta para administrar el Portal de Acceso.</p>
     </div>
 
-    <form method="post" class="space-y-8">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="space-y-6">
-                <div>
-                    <label for="nombre_completo" class="block text-sm font-bold text-gray-700 mb-1">Nombre Completo</label>
-                    <input type="text" name="nombre_completo" id="nombre_completo"
-                           value="{{ datos_previos.nombre_completo if datos_previos else '' }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
-                           placeholder="Ej: Juan Pérez" required>
-                </div>
-
-                <div>
-                    <label for="email" class="block text-sm font-bold text-gray-700 mb-1">Correo Electrónico</label>
-                    <input type="email" name="email" id="email"
-                           value="{{ datos_previos.email if datos_previos else '' }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition"
-                           placeholder="usuario@mahosalud.cl" required>
-                </div>
-
-            </div>
-
-            <div class="space-y-6">
-                <div>
-                    <label for="rol_id" class="block text-sm font-bold text-gray-700 mb-1">Nivel de Acceso (Rol)</label>
-                    <select name="rol_id" id="rol_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
-                        <option value="" disabled {% if not datos_previos or not datos_previos.get('rol_id') %}selected{% endif %}>Selecciona un rol</option>
-                        {% for rol in roles %}
-                            <option value="{{ rol.id }}" {% if datos_previos and datos_previos.get('rol_id') == rol.id|string %}selected{% endif %}>
-                                {{ rol.nombre }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-
-                <p class="text-sm text-gray-600">El funcionario recibirá un enlace de activación de 24 horas para establecer su propia contraseña.</p>
-            </div>
+    <form method="post" class="space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div>
+            <label for="nombre_completo" class="block text-sm font-bold text-gray-700 mb-1">Nombre Completo</label>
+            <input type="text" id="nombre_completo" name="nombre_completo" maxlength="255"
+                   value="{{ datos_previos.get('nombre_completo', '') }}" required
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
         </div>
-
-        <div class="mt-10 border-t pt-8">
-            <h3 class="text-lg font-bold text-gray-800 mb-2">Permisos de Aplicaciones</h3>
-            <p class="text-sm text-gray-500 mb-6">Selecciona las aplicaciones a las que este usuario tendrá acceso en el Portal.</p>
-            
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {% for cat in categorias %}
-                    {% set apps_activas = cat.aplicaciones | selectattr('activo') | list %}
-                    {% if apps_activas %}
-                    <div class="bg-gray-50 p-5 rounded-xl border border-gray-200">
-                        <h4 class="font-bold text-gray-700 mb-3 border-b pb-2 flex items-center">
-                            <span class="w-3 h-3 bg-blue-500 rounded-full mr-2"></span>
-                            {{ cat.nombre }}
-                        </h4>
-                        <div class="space-y-3 mt-4">
-                            {% for app in apps_activas %}
-                            <label class="flex items-start space-x-3 cursor-pointer group">
-                                <div class="flex items-center h-5 mt-0.5">
-                                    <input type="checkbox" name="aplicaciones" value="{{ app.id }}"
-                                           class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                                </div>
-                                <div class="text-sm">
-                                    <span class="font-medium text-gray-700 group-hover:text-blue-600 transition-colors">{{ app.nombre }}</span>
-                                </div>
-                            </label>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endif %}
-                {% endfor %}
-            </div>
+        <div>
+            <label for="email" class="block text-sm font-bold text-gray-700 mb-1">Correo Electrónico</label>
+            <input type="email" id="email" name="email" maxlength="255"
+                   value="{{ datos_previos.get('email', '') }}" required
+                   placeholder="nombre@mahosalud.cl"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
         </div>
-
-        <div class="flex justify-end gap-4 pt-6 border-t border-gray-100 mt-8">
-            <a href="{{ url_for('admin.panel') }}" class="px-6 py-2 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition">Cancelar</a>
-            <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition">Crear Usuario</button>
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4 text-sm text-gray-700">
+            <p><strong>Rol:</strong> Admin (asignado automáticamente).</p>
+            <p class="mt-2">Se enviará un enlace de activación válido por 24 horas para establecer la contraseña.</p>
+        </div>
+        <div class="flex justify-end gap-4 pt-6 border-t border-gray-100">
+            <a href="{{ url_for('admin.panel') }}" class="px-6 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50">Cancelar</a>
+            <button type="submit" class="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold">Crear Administrador</button>
         </div>
     </form>
 </div>

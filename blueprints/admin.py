@@ -1,7 +1,8 @@
 # blueprints/admin.py
 import re
 import unicodedata
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from urllib.parse import urlsplit
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 
@@ -46,180 +47,159 @@ def before_request():
     """
     pass
 
-# --- RUTAS PRINCIPALES ---
+# --- ADMINISTRACIÓN DE CUENTAS TICs ---
+
+def obtener_rol_admin():
+    """El rol Admin se obtiene por nombre, sin asumir un ID fijo."""
+    return RolAplicacion.query.filter_by(nombre='Admin').first()
+
+def obtener_administrador_o_404(usuario_id):
+    """Impide administrar cuentas que no pertenezcan al rol Admin."""
+    return Usuario.query.join(RolAplicacion).filter(
+        Usuario.id == usuario_id,
+        RolAplicacion.nombre == 'Admin'
+    ).first_or_404()
 
 @admin_bp.route('/panel')
 def panel():
-    """
-    Vista principal del Panel de Administración.
-    Muestra estadísticas rápidas del portal y tabla de usuarios.
-    """
+    """Muestra únicamente cuentas administrativas y estadísticas del portal."""
     page = request.args.get('page', 1, type=int)
-    busqueda = request.args.get('busqueda', '')
-    rol_filtro = request.args.get('rol_filtro', '')
-    
-    query = Usuario.query
+    busqueda = request.args.get('busqueda', '').strip()
 
-    # Filtro por texto (Nombre o Email)
+    query = Usuario.query.join(RolAplicacion).filter(RolAplicacion.nombre == 'Admin')
     if busqueda:
-        query = query.filter(
-            or_(Usuario.nombre_completo.ilike(f'%{busqueda}%'),
-                Usuario.email.ilike(f'%{busqueda}%'))
-        )
-    
-    # Filtro por Rol de Aplicación
-    if rol_filtro:
-        query = query.filter(Usuario.rol_id == rol_filtro)
-    
-    # Paginación de usuarios
-    pagination = query.order_by(Usuario.id).paginate(page=page, per_page=10, error_out=False)
-    roles_para_filtro = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    
-    # Estadísticas
+        query = query.filter(or_(
+            Usuario.nombre_completo.ilike(f'%{busqueda}%'),
+            Usuario.email.ilike(f'%{busqueda}%')
+        ))
+
+    pagination = query.order_by(Usuario.id).paginate(
+        page=page, per_page=10, error_out=False
+    )
     stats = {
-        'total_usuarios': Usuario.query.count(),
+        'total_administradores': Usuario.query.join(RolAplicacion).filter(
+            RolAplicacion.nombre == 'Admin'
+        ).count(),
         'aplicaciones_activas': Aplicacion.query.filter_by(activo=True).count(),
         'categorias_activas': CategoriaAplicacion.query.filter_by(activo=True).count()
     }
 
-    return render_template('admin/panel.html', 
-                           pagination=pagination,
-                           roles_para_filtro=roles_para_filtro,
-                           busqueda=busqueda,
-                           rol_filtro=rol_filtro,
-                           stats=stats)
-
-# --- GESTIÓN DE USUARIOS ---
+    return render_template(
+        'admin/panel.html', pagination=pagination,
+        busqueda=busqueda, stats=stats
+    )
 
 @admin_bp.route('/crear_usuario', methods=['GET', 'POST'])
 def crear_usuario():
-    """Formulario para registrar nuevos usuarios."""
-    roles = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    # Necesitamos las categorías con sus apps para el formulario
-    categorias = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden).all()
+    """Crea exclusivamente administradores, con activación por correo."""
+    rol_admin = obtener_rol_admin()
+    if rol_admin is None:
+        flash('No existe el rol Admin. Revisa los roles de la base de datos.', 'danger')
+        return redirect(url_for('admin.panel'))
 
     if request.method == 'POST':
         nombre = request.form.get('nombre_completo', '').strip()
         email = request.form.get('email', '').strip().lower()
-        rol_id = request.form.get('rol_id')
-        aplicaciones_ids = request.form.getlist('aplicaciones') # IDs de las apps seleccionadas
-        
-        # 🔴 Validaciones backend
-        if not nombre or not email or not rol_id:
-            flash('Todos los campos obligatorios deben completarse.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
-        
-        # Validación de email duplicado
-        if Usuario.query.filter_by(email=email).first():
-            flash('Error: El correo electrónico ya se encuentra registrado.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
 
-        try:
-            rol = db.session.get(RolAplicacion, int(rol_id))
-            if rol is None:
-                flash('Selecciona un rol válido.', 'danger')
-                return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
-            token, digest, expiracion = generar_token(ACTIVACION_HORAS)
-            nuevo_usuario = Usuario(
-                nombre_completo=nombre,
-                email=email,
-                rol_id=int(rol_id),
-                cambio_clave_requerido=False,
-                activo=True,
-                activacion_pendiente=True,
-                activacion_token_hash=digest,
-                activacion_token_expiracion=expiracion,
-                password_hash=None
-            )
-            # Asignar aplicaciones
-            if aplicaciones_ids:
-                apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
-                nuevo_usuario.aplicaciones_permitidas.extend(apps_seleccionadas)
+        if not nombre or not email:
+            flash('Nombre y correo electrónico son obligatorios.', 'danger')
+        elif len(nombre) > 255 or len(email) > 255:
+            flash('El nombre o correo supera la longitud permitida.', 'danger')
+        elif Usuario.query.filter_by(email=email).first():
+            flash('El correo electrónico ya se encuentra registrado.', 'danger')
+        else:
+            try:
+                token, digest, expiracion = generar_token(ACTIVACION_HORAS)
+                nuevo_usuario = Usuario(
+                    nombre_completo=nombre,
+                    email=email,
+                    rol_id=rol_admin.id,
+                    cambio_clave_requerido=False,
+                    activo=True,
+                    activacion_pendiente=True,
+                    activacion_token_hash=digest,
+                    activacion_token_expiracion=expiracion,
+                    password_hash=None
+                )
+                db.session.add(nuevo_usuario)
+                db.session.commit()
+                registrar_log_sistema(
+                    'Creación Administrador',
+                    f'Se creó la cuenta administrativa de {nombre} ({email}).',
+                    usuario=current_user
+                )
+                if enviar_activacion_usuario(nuevo_usuario, token):
+                    flash('Administrador creado. Se envió el enlace de activación.', 'success')
+                else:
+                    flash('Administrador creado, pero no se pudo enviar el correo. Reenvía la activación.', 'warning')
+                return redirect(url_for('admin.panel'))
+            except Exception:
+                db.session.rollback()
+                flash('No fue posible crear el administrador. Inténtalo nuevamente.', 'danger')
 
-            db.session.add(nuevo_usuario)
-            db.session.commit()
-
-            registrar_log_sistema("Creación Usuario", f"Admin creó a {nombre} ({email}).", usuario=current_user)
-
-            if enviar_activacion_usuario(nuevo_usuario, token):
-                flash('Usuario creado. Se envió un enlace para establecer su contraseña.', 'success')
-            else:
-                flash('Usuario creado, pero el correo de activación no pudo enviarse. Reenvía la invitación.', 'warning')
-
-            return redirect(url_for('admin.panel'))
-
-        except Exception:
-            db.session.rollback()
-            flash('No fue posible crear la cuenta. Revisa los datos e inténtalo nuevamente.', 'danger')
-
-    return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
+    return render_template('admin/crear_usuario.html', datos_previos=request.form)
 
 @admin_bp.route('/editar_usuario/<int:id>', methods=['GET', 'POST'])
 def editar_usuario(id):
-    """Permite modificar los datos básicos, perfil y permisos granulares de un usuario."""
-    usuario = Usuario.query.get_or_404(id)
-    roles = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    categorias = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden).all()
+    """Modifica los datos de una cuenta Admin; no altera permisos de aplicaciones."""
+    usuario = obtener_administrador_o_404(id)
 
     if request.method == 'POST':
         email_nuevo = request.form.get('email', '').strip().lower()
         nombre_nuevo = request.form.get('nombre_completo', '').strip()
-        rol_id = request.form.get('rol_id')
         forzar_cambio = request.form.get('forzar_cambio_clave') == '1'
-        aplicaciones_ids = request.form.getlist('aplicaciones')
-        
-        # Validación de duplicidad de email
-        usuario_existente = Usuario.query.filter_by(email=email_nuevo).first()
-        if usuario_existente and usuario_existente.id != id:
-            flash('Error: Ese correo ya pertenece a otro usuario en el sistema.', 'danger')
-            return render_template('admin/editar_usuario.html', usuario=usuario, roles=roles, categorias=categorias)
 
-        usuario.nombre_completo = nombre_nuevo
-        usuario.email = email_nuevo
-        usuario.rol_id = int(rol_id)
-        usuario.cambio_clave_requerido = forzar_cambio if not usuario.activacion_pendiente else False
-
-        # Actualizar permisos de aplicaciones
-        if aplicaciones_ids:
-            apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
-            usuario.aplicaciones_permitidas = apps_seleccionadas
+        if not nombre_nuevo or not email_nuevo:
+            flash('Nombre y correo electrónico son obligatorios.', 'danger')
+        elif len(nombre_nuevo) > 255 or len(email_nuevo) > 255:
+            flash('El nombre o correo supera la longitud permitida.', 'danger')
+        elif Usuario.query.filter(
+            Usuario.email == email_nuevo, Usuario.id != id
+        ).first():
+            flash('El correo electrónico ya pertenece a otra cuenta.', 'danger')
         else:
-            usuario.aplicaciones_permitidas = []
+            try:
+                usuario.nombre_completo = nombre_nuevo
+                usuario.email = email_nuevo
+                usuario.cambio_clave_requerido = (
+                    forzar_cambio if not usuario.activacion_pendiente else False
+                )
+                # El rol y las relaciones con aplicaciones permanecen intactos.
+                db.session.commit()
+                registrar_log_sistema(
+                    'Edición Administrador',
+                    f'Se actualizó la cuenta administrativa ID {usuario.id}.',
+                    usuario=current_user
+                )
+                flash('Administrador actualizado correctamente.', 'success')
+                return redirect(url_for('admin.panel'))
+            except Exception:
+                db.session.rollback()
+                flash('No se pudo actualizar el administrador.', 'danger')
 
-        try:
-            db.session.commit()
-            registrar_log_sistema("Edición Usuario", f"Admin editó perfil de {usuario.nombre_completo}.", usuario=current_user)
-            flash('Usuario actualizado con éxito.', 'success')
-            return redirect(url_for('admin.panel'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al actualizar la base de datos: {str(e)}', 'danger')
-
-    return render_template('admin/editar_usuario.html', usuario=usuario, roles=roles, categorias=categorias)
+    return render_template('admin/editar_usuario.html', usuario=usuario)
 
 @admin_bp.route('/toggle_activo/<int:id>', methods=['POST'])
 def toggle_activo(id):
-    """
-    Habilita o deshabilita a un usuario. 
-    Protege al usuario actual de desactivarse a sí mismo.
-    """
-    usuario = Usuario.query.get_or_404(id)
-
+    """Activa o bloquea cuentas Admin, excepto la cuenta propia."""
+    usuario = obtener_administrador_o_404(id)
     if usuario.id == current_user.id:
-        flash('Medida de seguridad: No puedes desactivar tu propia cuenta.', 'danger')
+        flash('No puedes cambiar el estado de tu propia cuenta.', 'danger')
         return redirect(url_for('admin.panel'))
 
     try:
         usuario.activo = not usuario.activo
+        # La protección de sesiones ya verifica el estado de la cuenta.
         db.session.commit()
-
-        estado = "activado" if usuario.activo else "desactivado"
-        registrar_log_sistema("Cambio Estado Usuario", f"Usuario {usuario.nombre_completo} fue {estado}.", usuario=current_user)
-        flash(f'Usuario {usuario.nombre_completo} {estado} correctamente.', 'success')
-    except Exception as e:
+        estado = 'activado' if usuario.activo else 'desactivado'
+        registrar_log_sistema(
+            'Cambio Estado Administrador',
+            f'Administrador ID {usuario.id} {estado}.', usuario=current_user
+        )
+        flash(f'Administrador {usuario.nombre_completo} {estado} correctamente.', 'success')
+    except Exception:
         db.session.rollback()
-        registrar_log_sistema("Error Cambio Estado", f"Error al cambiar estado de {usuario.nombre_completo}: {str(e)}", usuario=current_user)
-        flash('Ocurrió un error al cambiar el estado del usuario.', 'danger')
+        flash('Ocurrió un error al cambiar el estado del administrador.', 'danger')
 
     return redirect(url_for('admin.panel'))
 
@@ -249,16 +229,72 @@ def ver_logs():
                            acciones_posibles=acciones_unicas,
                            filtros={'usuario_id': usuario_filtro, 'accion': accion_filtro})
 
+# --- VALIDACIONES COMPARTIDAS DEL CATÁLOGO ---
+
+MAX_ORDEN = 2_147_483_647  # INT positivo de MySQL
+
+def validar_orden(valor):
+    """Devuelve un entero positivo válido o None; nunca aplica un valor oculto."""
+    texto = (valor or '').strip()
+    if not texto.isascii() or not texto.isdecimal():
+        return None
+    numero = int(texto)
+    return numero if 1 <= numero <= MAX_ORDEN else None
+
+def validar_url_destino(valor):
+    """Acepta HTTP/HTTPS con host; permite dominios e IP internas."""
+    if not valor or len(valor) > 500 or any(ord(c) < 32 or ord(c) == 127 for c in valor):
+        return False
+    try:
+        url = urlsplit(valor)
+        return (
+            url.scheme in ('http', 'https')
+            and bool(url.hostname)
+            and not url.username
+            and not url.password
+            and url.port != 0
+        )
+    except ValueError:
+        return False
+
+def validar_campos_aplicacion(nombre, url, descripcion, version, orden):
+    if not nombre or not url:
+        return 'El nombre y la URL de destino son obligatorios.'
+    if len(nombre) > 150 or len(descripcion) > 255 or len(version) > 50:
+        return 'Uno de los campos excede la longitud permitida.'
+    if not validar_url_destino(url):
+        return 'Ingresa una URL HTTP o HTTPS válida con un destino definido (máximo 500 caracteres).'
+    if orden is None:
+        return 'El orden debe ser un entero positivo válido.'
+    return None
+
+def obtener_categoria_destino(valor, actual_id=None):
+    """Permite conservar la categoría inactiva actual, pero no seleccionar otra inactiva."""
+    if not valor or not valor.isascii() or not valor.isdecimal():
+        return None
+    categoria = db.session.get(CategoriaAplicacion, int(valor))
+    if categoria and (categoria.activo or categoria.id == actual_id):
+        return categoria
+    return None
+
+def obtener_tipo_destino(valor, actual_id=None):
+    if not valor or not valor.isascii() or not valor.isdecimal():
+        return None
+    tipo = db.session.get(TipoAplicacion, int(valor))
+    if tipo and (tipo.activo or tipo.id == actual_id):
+        return tipo
+    return None
+
 # --- GESTIÓN DE CATEGORÍAS ---
 
 @admin_bp.route('/categorias', methods=['GET', 'POST'])
 def categorias():
     if request.method == 'POST':
         nombre = request.form.get('nombre', '').strip()
-        orden = request.form.get('orden', '1').strip()
+        orden = validar_orden(request.form.get('orden'))
         
-        if not nombre:
-            flash('El nombre de la categoría es obligatorio.', 'danger')
+        if not nombre or len(nombre) > 100 or orden is None:
+            flash('Ingresa un nombre de hasta 100 caracteres y un orden entero positivo.', 'danger')
             return redirect(url_for('admin.categorias'))
             
         # Validación Backend: Evitar nombres duplicados
@@ -267,17 +303,14 @@ def categorias():
             return redirect(url_for('admin.categorias'))
             
         try:
-            nueva_cat = CategoriaAplicacion(
-                nombre=nombre,
-                orden=int(orden) if orden.isdigit() else 1,
-                activo=True
-            )
+            nueva_cat = CategoriaAplicacion(nombre=nombre, orden=orden, activo=True)
             db.session.add(nueva_cat)
             db.session.commit()
-            registrar_log_sistema("Creación Categoría", f"Categoría '{nombre}' creada.", usuario=current_user)
+            registrar_log_sistema('Creación Categoría', f'Categoría ID {nueva_cat.id} creada.', usuario=current_user)
             flash('Categoría creada exitosamente.', 'success')
         except Exception as e:
             db.session.rollback()
+            current_app.logger.exception('Error al crear categoría')
             registrar_log_sistema("Error Creación Categoría", f"Error al crear la categoría '{nombre}': {str(e)}", usuario=current_user)
             flash('Error al crear la categoría.', 'danger')
             
@@ -285,40 +318,45 @@ def categorias():
 
     # Paginación y Listado (Ordenamiento Secundario)
     page = request.args.get('page', 1, type=int)
-    busqueda = request.args.get('busqueda', '')
+    busqueda = request.args.get('busqueda', '').strip()
     
     query = CategoriaAplicacion.query
     if busqueda:
         query = query.filter(CategoriaAplicacion.nombre.ilike(f'%{busqueda}%'))
         
-    pagination = query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
+    pagination = query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).paginate(
+        page=page, per_page=10, error_out=False
+    )
     
     return render_template('admin/categorias.html', pagination=pagination, busqueda=busqueda)
 
 @admin_bp.route('/editar_categoria/<int:id>', methods=['POST'])
 def editar_categoria(id):
-    categoria = CategoriaAplicacion.query.get_or_404(id)
+    categoria = db.get_or_404(CategoriaAplicacion, id)
     nombre = request.form.get('nombre', '').strip()
-    orden = request.form.get('orden', '1').strip()
+    orden = validar_orden(request.form.get('orden'))
 
-    if not nombre:
-        flash('El nombre es obligatorio.', 'danger')
+    if not nombre or len(nombre) > 100 or orden is None:
+        flash('Ingresa un nombre de hasta 100 caracteres y un orden entero positivo.', 'danger')
         return redirect(url_for('admin.categorias'))
 
     # Validación Backend: Evitar nombres duplicados excluyendo la actual
-    existe = CategoriaAplicacion.query.filter(CategoriaAplicacion.nombre == nombre, CategoriaAplicacion.id != id).first()
+    existe = CategoriaAplicacion.query.filter(
+        CategoriaAplicacion.nombre == nombre, CategoriaAplicacion.id != id
+    ).first()
     if existe:
         flash(f'Ya existe otra categoría llamada "{nombre}".', 'warning')
         return redirect(url_for('admin.categorias'))
 
     try:
         categoria.nombre = nombre
-        categoria.orden = int(orden) if orden.isdigit() else 1
+        categoria.orden = orden
         db.session.commit()
-        registrar_log_sistema("Edición Categoría", f"Categoría ID {categoria.id} actualizada.", usuario=current_user)
+        registrar_log_sistema('Edición Categoría', f'Categoría ID {id} actualizada.', usuario=current_user)
         flash('Categoría actualizada correctamente.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al editar categoría ID %s', id)
         registrar_log_sistema("Error Edición Categoría", f"Error: {str(e)}", usuario=current_user)
         flash('Error al actualizar la categoría.', 'danger')
 
@@ -326,51 +364,51 @@ def editar_categoria(id):
 
 @admin_bp.route('/toggle_categoria/<int:id>', methods=['POST'])
 def toggle_categoria(id):
-    categoria = CategoriaAplicacion.query.get_or_404(id)
+    categoria = db.get_or_404(CategoriaAplicacion, id)
     try:
         categoria.activo = not categoria.activo
         db.session.commit()
-        estado = "activada" if categoria.activo else "desactivada"
-        registrar_log_sistema("Cambio Estado Categoría", f"La categoría '{categoria.nombre}' fue {estado}.", usuario=current_user)
-        flash(f"Categoría '{categoria.nombre}' {estado}.", 'success')
+        estado = 'activada' if categoria.activo else 'desactivada'
+        registrar_log_sistema('Cambio Estado Categoría', f'Categoría ID {id} {estado}.', usuario=current_user)
+        flash(f'Categoría "{categoria.nombre}" {estado}.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al cambiar estado de categoría ID %s', id)
         registrar_log_sistema("Error Cambio Estado Categoría", f"Error: {str(e)}", usuario=current_user)
-        flash("Error al cambiar el estado.", 'danger')
+        flash('Error al cambiar el estado.', 'danger')
+
     return redirect(url_for('admin.categorias'))
 
 # --- GESTIÓN DE APLICACIONES ---
 
 @admin_bp.route('/aplicaciones', methods=['GET', 'POST'])
 def aplicaciones():
-    # Solo mostrar categorías activas para crear nuevas apps
-    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
-    tipos = TipoAplicacion.query.filter_by(activo=True).all()
-    
     if request.method == 'POST':
         nombre = request.form.get('nombre', '').strip()
-        slug_raw = request.form.get('slug', '').strip()
-        url_destino = request.form.get('url_destino', '').strip()
-        cat_id = request.form.get('categoria_id')
-        tipo_id = request.form.get('tipo_aplicacion_id')
-        
-        if not all([nombre, slug_raw, url_destino, cat_id, tipo_id]):
-            flash('Faltan campos obligatorios.', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
-        # Validación de URL simple: obligatorio http:// o https://
-        if not url_destino.startswith(('http://', 'https://')):
-            flash('La URL de destino debe comenzar con http:// o https://', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
-        # Validar que la categoría de destino está activa
-        cat_obj = CategoriaAplicacion.query.get(cat_id)
-        if not cat_obj or not cat_obj.activo:
-            flash('No puedes registrar una aplicación en una categoría inactiva o inexistente.', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
         # Normalización Backend a snake_case
-        slug = normalizar_slug(slug_raw)
+        slug = normalizar_slug(request.form.get('slug', '').strip())
+        url = request.form.get('url_destino', '').strip()
+        descripcion = request.form.get('descripcion', '').strip()
+        version = request.form.get('version', '').strip()
+        orden = validar_orden(request.form.get('orden'))
+        cat_id = request.form.get('categoria_id', '').strip()
+        tipo_id = request.form.get('tipo_aplicacion_id', '').strip()
+
+        error = validar_campos_aplicacion(nombre, url, descripcion, version, orden)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        if not slug or len(slug) > 50:
+            flash('El slug debe contener caracteres válidos y tener hasta 50 caracteres.', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        # Validar que la categoría y tipo de destino están activos
+        categoria = obtener_categoria_destino(cat_id)
+        tipo = obtener_tipo_destino(tipo_id)
+        if not categoria or not tipo:
+            flash('Selecciona una categoría y un tipo de aplicación activos.', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
             
         # Validación Backend: Evitar nombres o slugs duplicados
         if Aplicacion.query.filter_by(nombre=nombre).first():
@@ -383,118 +421,132 @@ def aplicaciones():
 
         try:
             nueva_app = Aplicacion(
-                nombre=nombre,
-                slug=slug, # Se guarda el normalizado
-                descripcion=request.form.get('descripcion', '').strip(),
-                version=request.form.get('version', '').strip(),
-                url_destino=url_destino,
-                categoria_id=int(cat_id),
-                tipo_aplicacion_id=int(tipo_id),
-                orden=int(request.form.get('orden', '1'))
+                nombre=nombre, slug=slug, descripcion=descripcion, version=version,
+                url_destino=url, categoria_id=categoria.id, tipo_aplicacion_id=tipo.id,
+                orden=orden, activo=True
             )
             db.session.add(nueva_app)
             db.session.commit()
-            registrar_log_sistema("Creación Aplicación", f"App '{nombre}' registrada.", usuario=current_user)
+            registrar_log_sistema('Creación Aplicación', f'Aplicación ID {nueva_app.id} registrada.', usuario=current_user)
             flash('Aplicación registrada exitosamente.', 'success')
         except Exception as e:
             db.session.rollback()
+            current_app.logger.exception('Error al registrar aplicación')
             registrar_log_sistema("Error Creación Aplicación", f"Error al crear la app '{nombre}': {str(e)}", usuario=current_user)
             flash('Error al crear la aplicación.', 'danger')
             
         return redirect(url_for('admin.aplicaciones'))
 
+    # Solo mostrar categorías activas para crear nuevas apps (Para los selects de creación/edición)
+    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(
+        CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()
+    ).all()
+    tipos = TipoAplicacion.query.filter_by(activo=True).all()
+
+    # Para el filtro general
+    todas_categorias = CategoriaAplicacion.query.order_by(
+        CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()
+    ).all()
+    todos_tipos = TipoAplicacion.query.order_by(TipoAplicacion.nombre.asc()).all()
+
     # Paginación y Listado (Ordenamiento Secundario)
-    todas_categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
     page = request.args.get('page', 1, type=int)
-    cat_filtro = request.args.get('categoria_id', '')
-    busqueda = request.args.get('busqueda', '')
+    cat_filtro = request.args.get('categoria_id', '').strip()
+    busqueda = request.args.get('busqueda', '').strip()
 
     query = Aplicacion.query
-    if cat_filtro and cat_filtro.isdigit():
+    if cat_filtro.isascii() and cat_filtro.isdecimal():
         query = query.filter_by(categoria_id=int(cat_filtro))
     if busqueda:
         query = query.filter(or_(Aplicacion.nombre.ilike(f'%{busqueda}%'), Aplicacion.slug.ilike(f'%{busqueda}%')))
         
-    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden.asc(), Aplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
-
-    return render_template('admin/aplicaciones.html', 
-                           pagination=pagination, 
-                           categorias=categorias_activas, # Para los selects de creación/edición
-                           todas_categorias=todas_categorias, # Para el filtro general
-                           tipos=tipos,
-                           cat_filtro=cat_filtro,
-                           busqueda=busqueda)
+    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden.asc(), Aplicacion.nombre.asc()).paginate(
+        page=page, per_page=10, error_out=False
+    )
     
+    return render_template(
+        'admin/aplicaciones.html', pagination=pagination,
+        categorias=categorias_activas, todas_categorias=todas_categorias,
+        tipos=tipos, todos_tipos=todos_tipos, cat_filtro=cat_filtro, busqueda=busqueda
+    )
+
+
 @admin_bp.route('/editar_aplicacion/<int:id>', methods=['POST'])
 def editar_aplicacion(id):
-    app_obj = Aplicacion.query.get_or_404(id)
+    app_obj = db.get_or_404(Aplicacion, id)
     
     nombre = request.form.get('nombre', '').strip()
     # El slug NO se recibe del POST porque es de solo lectura (inmutable)
-    url_destino = request.form.get('url_destino', '').strip()
-    cat_id = request.form.get('categoria_id')
-    tipo_id = request.form.get('tipo_aplicacion_id')
-
-    if not all([nombre, url_destino, cat_id, tipo_id]):
-        flash('Faltan campos obligatorios.', 'danger')
+    url = request.form.get('url_destino', '').strip()
+    descripcion = request.form.get('descripcion', '').strip()
+    version = request.form.get('version', '').strip()
+    orden = validar_orden(request.form.get('orden'))
+    cat_id = request.form.get('categoria_id', '').strip()
+    tipo_id = request.form.get('tipo_aplicacion_id', '').strip()
+    
+    error = validar_campos_aplicacion(nombre, url, descripcion, version, orden)
+    if error:
+        flash(error, 'danger')
         return redirect(url_for('admin.aplicaciones'))
     
-    if not url_destino.startswith(('http://', 'https://')):
-        flash('La URL de destino debe comenzar obligatoriamente con http:// o https://', 'danger')
-        return redirect(url_for('admin.aplicaciones'))
-    
-    cat_obj = CategoriaAplicacion.query.get(cat_id)
-    if not cat_obj or not cat_obj.activo:
-        flash('No se puede mover la aplicación a una categoría inactiva o inexistente.', 'danger')
+    categoria = obtener_categoria_destino(cat_id, app_obj.categoria_id)
+    tipo = obtener_tipo_destino(tipo_id, app_obj.tipo_aplicacion_id)
+    if not categoria or not tipo:
+        flash('Selecciona una categoría y un tipo válidos. No se permite trasladar a elementos inactivos.', 'danger')
         return redirect(url_for('admin.aplicaciones'))
 
     # Validación Backend: Evitar nombres duplicados excluyendo la actual
-    existe_nombre = Aplicacion.query.filter(Aplicacion.nombre == nombre, Aplicacion.id != id).first()
-    if existe_nombre:
+    existe = Aplicacion.query.filter(Aplicacion.nombre == nombre, Aplicacion.id != id).first()
+    if existe:
         flash(f'Ya existe otra aplicación con el nombre "{nombre}".', 'warning')
         return redirect(url_for('admin.aplicaciones'))
 
     try:
         app_obj.nombre = nombre
-        # app_obj.slug queda intacto
-        app_obj.descripcion = request.form.get('descripcion', '').strip()
-        app_obj.version = request.form.get('version', '').strip()
-        app_obj.url_destino = url_destino
-        app_obj.categoria_id = int(cat_id)
-        app_obj.tipo_aplicacion_id = int(tipo_id)
-        app_obj.orden = int(request.form.get('orden', '1'))
-        
+        # El slug y las relaciones de usuarios/roles no se modifican.
+        app_obj.descripcion = descripcion
+        app_obj.version = version
+        app_obj.url_destino = url
+        app_obj.categoria_id = categoria.id
+        app_obj.tipo_aplicacion_id = tipo.id
+        app_obj.orden = orden
         db.session.commit()
-        registrar_log_sistema("Edición Aplicación", f"App ID {app_obj.id} actualizada.", usuario=current_user)
+        registrar_log_sistema('Edición Aplicación', f'Aplicación ID {id} actualizada.', usuario=current_user)
         flash('Aplicación actualizada correctamente.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al editar aplicación ID %s', id)
         registrar_log_sistema("Error Edición Aplicación", f"Error: {str(e)}", usuario=current_user)
         flash('Error al actualizar la aplicación.', 'danger')
 
     return redirect(url_for('admin.aplicaciones'))
 
+
 @admin_bp.route('/toggle_aplicacion/<int:id>', methods=['POST'])
 def toggle_aplicacion(id):
-    app_obj = Aplicacion.query.get_or_404(id)
+    app_obj = db.get_or_404(Aplicacion, id)
     try:
         app_obj.activo = not app_obj.activo
         db.session.commit()
-        estado = "activada" if app_obj.activo else "desactivada"
-        registrar_log_sistema("Cambio Estado Aplicación", f"La app '{app_obj.nombre}' fue {estado}.", usuario=current_user)
-        flash(f"Aplicación '{app_obj.nombre}' {estado}.", 'success')
+        estado = 'activada' if app_obj.activo else 'desactivada'
+        registrar_log_sistema('Cambio Estado Aplicación', f'Aplicación ID {id} {estado}.', usuario=current_user)
+        flash(f'Aplicación "{app_obj.nombre}" {estado}.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al cambiar estado de aplicación ID %s', id)
         registrar_log_sistema("Error Cambio Estado Aplicación", f"Error: {str(e)}", usuario=current_user)
-        flash("Error al cambiar el estado.", 'danger')
+        flash('Error al cambiar el estado.', 'danger')
+
     return redirect(url_for('admin.aplicaciones'))
+
 
 @admin_bp.route('/reenviar_activacion/<int:id>', methods=['POST'])
 def reenviar_activacion(id):
-    usuario = Usuario.query.get_or_404(id)
+    usuario = obtener_administrador_o_404(id)
     if not usuario.activo or not usuario.activacion_pendiente:
         flash('La cuenta no requiere activación o está bloqueada.', 'warning')
         return redirect(url_for('admin.panel'))
+
     # Cuenta destinataria: 3 reenvíos por hora desde cualquier administrador.
     validar_limite('reenviar_activacion_cuenta', str(usuario.id), 3, 60 * 60)
     token, digest, expiracion = generar_token(ACTIVACION_HORAS)
@@ -509,5 +561,7 @@ def reenviar_activacion(id):
             flash('No se pudo enviar el correo. Puedes intentar reenviarlo más tarde.', 'warning')
     except Exception:
         db.session.rollback()
+        current_app.logger.exception('Error al reenviar activación ID %s', id)
         flash('No se pudo renovar el enlace.', 'danger')
+
     return redirect(url_for('admin.panel'))
