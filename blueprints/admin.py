@@ -1,7 +1,7 @@
 # blueprints/admin.py
 import re
 import unicodedata
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 
@@ -46,180 +46,159 @@ def before_request():
     """
     pass
 
-# --- RUTAS PRINCIPALES ---
+# --- ADMINISTRACIÓN DE CUENTAS TICs ---
+
+def obtener_rol_admin():
+    """El rol Admin se obtiene por nombre, sin asumir un ID fijo."""
+    return RolAplicacion.query.filter_by(nombre='Admin').first()
+
+def obtener_administrador_o_404(usuario_id):
+    """Impide administrar cuentas que no pertenezcan al rol Admin."""
+    return Usuario.query.join(RolAplicacion).filter(
+        Usuario.id == usuario_id,
+        RolAplicacion.nombre == 'Admin'
+    ).first_or_404()
 
 @admin_bp.route('/panel')
 def panel():
-    """
-    Vista principal del Panel de Administración.
-    Muestra estadísticas rápidas del portal y tabla de usuarios.
-    """
+    """Muestra únicamente cuentas administrativas y estadísticas del portal."""
     page = request.args.get('page', 1, type=int)
-    busqueda = request.args.get('busqueda', '')
-    rol_filtro = request.args.get('rol_filtro', '')
-    
-    query = Usuario.query
+    busqueda = request.args.get('busqueda', '').strip()
 
-    # Filtro por texto (Nombre o Email)
+    query = Usuario.query.join(RolAplicacion).filter(RolAplicacion.nombre == 'Admin')
     if busqueda:
-        query = query.filter(
-            or_(Usuario.nombre_completo.ilike(f'%{busqueda}%'),
-                Usuario.email.ilike(f'%{busqueda}%'))
-        )
-    
-    # Filtro por Rol de Aplicación
-    if rol_filtro:
-        query = query.filter(Usuario.rol_id == rol_filtro)
-    
-    # Paginación de usuarios
-    pagination = query.order_by(Usuario.id).paginate(page=page, per_page=10, error_out=False)
-    roles_para_filtro = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    
-    # Estadísticas
+        query = query.filter(or_(
+            Usuario.nombre_completo.ilike(f'%{busqueda}%'),
+            Usuario.email.ilike(f'%{busqueda}%')
+        ))
+
+    pagination = query.order_by(Usuario.id).paginate(
+        page=page, per_page=10, error_out=False
+    )
     stats = {
-        'total_usuarios': Usuario.query.count(),
+        'total_administradores': Usuario.query.join(RolAplicacion).filter(
+            RolAplicacion.nombre == 'Admin'
+        ).count(),
         'aplicaciones_activas': Aplicacion.query.filter_by(activo=True).count(),
         'categorias_activas': CategoriaAplicacion.query.filter_by(activo=True).count()
     }
 
-    return render_template('admin/panel.html', 
-                           pagination=pagination,
-                           roles_para_filtro=roles_para_filtro,
-                           busqueda=busqueda,
-                           rol_filtro=rol_filtro,
-                           stats=stats)
-
-# --- GESTIÓN DE USUARIOS ---
+    return render_template(
+        'admin/panel.html', pagination=pagination,
+        busqueda=busqueda, stats=stats
+    )
 
 @admin_bp.route('/crear_usuario', methods=['GET', 'POST'])
 def crear_usuario():
-    """Formulario para registrar nuevos usuarios."""
-    roles = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    # Necesitamos las categorías con sus apps para el formulario
-    categorias = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden).all()
+    """Crea exclusivamente administradores, con activación por correo."""
+    rol_admin = obtener_rol_admin()
+    if rol_admin is None:
+        flash('No existe el rol Admin. Revisa los roles de la base de datos.', 'danger')
+        return redirect(url_for('admin.panel'))
 
     if request.method == 'POST':
         nombre = request.form.get('nombre_completo', '').strip()
         email = request.form.get('email', '').strip().lower()
-        rol_id = request.form.get('rol_id')
-        aplicaciones_ids = request.form.getlist('aplicaciones') # IDs de las apps seleccionadas
-        
-        # 🔴 Validaciones backend
-        if not nombre or not email or not rol_id:
-            flash('Todos los campos obligatorios deben completarse.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
-        
-        # Validación de email duplicado
-        if Usuario.query.filter_by(email=email).first():
-            flash('Error: El correo electrónico ya se encuentra registrado.', 'danger')
-            return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
 
-        try:
-            rol = db.session.get(RolAplicacion, int(rol_id))
-            if rol is None:
-                flash('Selecciona un rol válido.', 'danger')
-                return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
-            token, digest, expiracion = generar_token(ACTIVACION_HORAS)
-            nuevo_usuario = Usuario(
-                nombre_completo=nombre,
-                email=email,
-                rol_id=int(rol_id),
-                cambio_clave_requerido=False,
-                activo=True,
-                activacion_pendiente=True,
-                activacion_token_hash=digest,
-                activacion_token_expiracion=expiracion,
-                password_hash=None
-            )
-            # Asignar aplicaciones
-            if aplicaciones_ids:
-                apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
-                nuevo_usuario.aplicaciones_permitidas.extend(apps_seleccionadas)
+        if not nombre or not email:
+            flash('Nombre y correo electrónico son obligatorios.', 'danger')
+        elif len(nombre) > 255 or len(email) > 255:
+            flash('El nombre o correo supera la longitud permitida.', 'danger')
+        elif Usuario.query.filter_by(email=email).first():
+            flash('El correo electrónico ya se encuentra registrado.', 'danger')
+        else:
+            try:
+                token, digest, expiracion = generar_token(ACTIVACION_HORAS)
+                nuevo_usuario = Usuario(
+                    nombre_completo=nombre,
+                    email=email,
+                    rol_id=rol_admin.id,
+                    cambio_clave_requerido=False,
+                    activo=True,
+                    activacion_pendiente=True,
+                    activacion_token_hash=digest,
+                    activacion_token_expiracion=expiracion,
+                    password_hash=None
+                )
+                db.session.add(nuevo_usuario)
+                db.session.commit()
+                registrar_log_sistema(
+                    'Creación Administrador',
+                    f'Se creó la cuenta administrativa de {nombre} ({email}).',
+                    usuario=current_user
+                )
+                if enviar_activacion_usuario(nuevo_usuario, token):
+                    flash('Administrador creado. Se envió el enlace de activación.', 'success')
+                else:
+                    flash('Administrador creado, pero no se pudo enviar el correo. Reenvía la activación.', 'warning')
+                return redirect(url_for('admin.panel'))
+            except Exception:
+                db.session.rollback()
+                flash('No fue posible crear el administrador. Inténtalo nuevamente.', 'danger')
 
-            db.session.add(nuevo_usuario)
-            db.session.commit()
-
-            registrar_log_sistema("Creación Usuario", f"Admin creó a {nombre} ({email}).", usuario=current_user)
-
-            if enviar_activacion_usuario(nuevo_usuario, token):
-                flash('Usuario creado. Se envió un enlace para establecer su contraseña.', 'success')
-            else:
-                flash('Usuario creado, pero el correo de activación no pudo enviarse. Reenvía la invitación.', 'warning')
-
-            return redirect(url_for('admin.panel'))
-
-        except Exception:
-            db.session.rollback()
-            flash('No fue posible crear la cuenta. Revisa los datos e inténtalo nuevamente.', 'danger')
-
-    return render_template('admin/crear_usuario.html', roles=roles, categorias=categorias, datos_previos=request.form)
+    return render_template('admin/crear_usuario.html', datos_previos=request.form)
 
 @admin_bp.route('/editar_usuario/<int:id>', methods=['GET', 'POST'])
 def editar_usuario(id):
-    """Permite modificar los datos básicos, perfil y permisos granulares de un usuario."""
-    usuario = Usuario.query.get_or_404(id)
-    roles = RolAplicacion.query.order_by(RolAplicacion.nombre).all()
-    categorias = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden).all()
+    """Modifica los datos de una cuenta Admin; no altera permisos de aplicaciones."""
+    usuario = obtener_administrador_o_404(id)
 
     if request.method == 'POST':
         email_nuevo = request.form.get('email', '').strip().lower()
         nombre_nuevo = request.form.get('nombre_completo', '').strip()
-        rol_id = request.form.get('rol_id')
         forzar_cambio = request.form.get('forzar_cambio_clave') == '1'
-        aplicaciones_ids = request.form.getlist('aplicaciones')
-        
-        # Validación de duplicidad de email
-        usuario_existente = Usuario.query.filter_by(email=email_nuevo).first()
-        if usuario_existente and usuario_existente.id != id:
-            flash('Error: Ese correo ya pertenece a otro usuario en el sistema.', 'danger')
-            return render_template('admin/editar_usuario.html', usuario=usuario, roles=roles, categorias=categorias)
 
-        usuario.nombre_completo = nombre_nuevo
-        usuario.email = email_nuevo
-        usuario.rol_id = int(rol_id)
-        usuario.cambio_clave_requerido = forzar_cambio if not usuario.activacion_pendiente else False
-
-        # Actualizar permisos de aplicaciones
-        if aplicaciones_ids:
-            apps_seleccionadas = Aplicacion.query.filter(Aplicacion.id.in_(aplicaciones_ids)).all()
-            usuario.aplicaciones_permitidas = apps_seleccionadas
+        if not nombre_nuevo or not email_nuevo:
+            flash('Nombre y correo electrónico son obligatorios.', 'danger')
+        elif len(nombre_nuevo) > 255 or len(email_nuevo) > 255:
+            flash('El nombre o correo supera la longitud permitida.', 'danger')
+        elif Usuario.query.filter(
+            Usuario.email == email_nuevo, Usuario.id != id
+        ).first():
+            flash('El correo electrónico ya pertenece a otra cuenta.', 'danger')
         else:
-            usuario.aplicaciones_permitidas = []
+            try:
+                usuario.nombre_completo = nombre_nuevo
+                usuario.email = email_nuevo
+                usuario.cambio_clave_requerido = (
+                    forzar_cambio if not usuario.activacion_pendiente else False
+                )
+                # El rol y las relaciones con aplicaciones permanecen intactos.
+                db.session.commit()
+                registrar_log_sistema(
+                    'Edición Administrador',
+                    f'Se actualizó la cuenta administrativa ID {usuario.id}.',
+                    usuario=current_user
+                )
+                flash('Administrador actualizado correctamente.', 'success')
+                return redirect(url_for('admin.panel'))
+            except Exception:
+                db.session.rollback()
+                flash('No se pudo actualizar el administrador.', 'danger')
 
-        try:
-            db.session.commit()
-            registrar_log_sistema("Edición Usuario", f"Admin editó perfil de {usuario.nombre_completo}.", usuario=current_user)
-            flash('Usuario actualizado con éxito.', 'success')
-            return redirect(url_for('admin.panel'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'Error al actualizar la base de datos: {str(e)}', 'danger')
-
-    return render_template('admin/editar_usuario.html', usuario=usuario, roles=roles, categorias=categorias)
+    return render_template('admin/editar_usuario.html', usuario=usuario)
 
 @admin_bp.route('/toggle_activo/<int:id>', methods=['POST'])
 def toggle_activo(id):
-    """
-    Habilita o deshabilita a un usuario. 
-    Protege al usuario actual de desactivarse a sí mismo.
-    """
-    usuario = Usuario.query.get_or_404(id)
-
+    """Activa o bloquea cuentas Admin, excepto la cuenta propia."""
+    usuario = obtener_administrador_o_404(id)
     if usuario.id == current_user.id:
-        flash('Medida de seguridad: No puedes desactivar tu propia cuenta.', 'danger')
+        flash('No puedes cambiar el estado de tu propia cuenta.', 'danger')
         return redirect(url_for('admin.panel'))
 
     try:
         usuario.activo = not usuario.activo
+        # La protección de sesiones ya verifica el estado de la cuenta.
         db.session.commit()
-
-        estado = "activado" if usuario.activo else "desactivado"
-        registrar_log_sistema("Cambio Estado Usuario", f"Usuario {usuario.nombre_completo} fue {estado}.", usuario=current_user)
-        flash(f'Usuario {usuario.nombre_completo} {estado} correctamente.', 'success')
-    except Exception as e:
+        estado = 'activado' if usuario.activo else 'desactivado'
+        registrar_log_sistema(
+            'Cambio Estado Administrador',
+            f'Administrador ID {usuario.id} {estado}.', usuario=current_user
+        )
+        flash(f'Administrador {usuario.nombre_completo} {estado} correctamente.', 'success')
+    except Exception:
         db.session.rollback()
-        registrar_log_sistema("Error Cambio Estado", f"Error al cambiar estado de {usuario.nombre_completo}: {str(e)}", usuario=current_user)
-        flash('Ocurrió un error al cambiar el estado del usuario.', 'danger')
+        flash('Ocurrió un error al cambiar el estado del administrador.', 'danger')
 
     return redirect(url_for('admin.panel'))
 
@@ -491,7 +470,7 @@ def toggle_aplicacion(id):
 
 @admin_bp.route('/reenviar_activacion/<int:id>', methods=['POST'])
 def reenviar_activacion(id):
-    usuario = Usuario.query.get_or_404(id)
+    usuario = obtener_administrador_o_404(id)
     if not usuario.activo or not usuario.activacion_pendiente:
         flash('La cuenta no requiere activación o está bloqueada.', 'warning')
         return redirect(url_for('admin.panel'))
