@@ -1,7 +1,8 @@
 # blueprints/admin.py
 import re
 import unicodedata
-from flask import Blueprint, render_template, request, redirect, url_for, flash, abort
+from urllib.parse import urlsplit
+from flask import Blueprint, render_template, request, redirect, url_for, flash, abort, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import or_
 
@@ -228,16 +229,72 @@ def ver_logs():
                            acciones_posibles=acciones_unicas,
                            filtros={'usuario_id': usuario_filtro, 'accion': accion_filtro})
 
+# --- VALIDACIONES COMPARTIDAS DEL CATÁLOGO ---
+
+MAX_ORDEN = 2_147_483_647  # INT positivo de MySQL
+
+def validar_orden(valor):
+    """Devuelve un entero positivo válido o None; nunca aplica un valor oculto."""
+    texto = (valor or '').strip()
+    if not texto.isascii() or not texto.isdecimal():
+        return None
+    numero = int(texto)
+    return numero if 1 <= numero <= MAX_ORDEN else None
+
+def validar_url_destino(valor):
+    """Acepta HTTP/HTTPS con host; permite dominios e IP internas."""
+    if not valor or len(valor) > 500 or any(ord(c) < 32 or ord(c) == 127 for c in valor):
+        return False
+    try:
+        url = urlsplit(valor)
+        return (
+            url.scheme in ('http', 'https')
+            and bool(url.hostname)
+            and not url.username
+            and not url.password
+            and url.port != 0
+        )
+    except ValueError:
+        return False
+
+def validar_campos_aplicacion(nombre, url, descripcion, version, orden):
+    if not nombre or not url:
+        return 'El nombre y la URL de destino son obligatorios.'
+    if len(nombre) > 150 or len(descripcion) > 255 or len(version) > 50:
+        return 'Uno de los campos excede la longitud permitida.'
+    if not validar_url_destino(url):
+        return 'Ingresa una URL HTTP o HTTPS válida con un destino definido (máximo 500 caracteres).'
+    if orden is None:
+        return 'El orden debe ser un entero positivo válido.'
+    return None
+
+def obtener_categoria_destino(valor, actual_id=None):
+    """Permite conservar la categoría inactiva actual, pero no seleccionar otra inactiva."""
+    if not valor or not valor.isascii() or not valor.isdecimal():
+        return None
+    categoria = db.session.get(CategoriaAplicacion, int(valor))
+    if categoria and (categoria.activo or categoria.id == actual_id):
+        return categoria
+    return None
+
+def obtener_tipo_destino(valor, actual_id=None):
+    if not valor or not valor.isascii() or not valor.isdecimal():
+        return None
+    tipo = db.session.get(TipoAplicacion, int(valor))
+    if tipo and (tipo.activo or tipo.id == actual_id):
+        return tipo
+    return None
+
 # --- GESTIÓN DE CATEGORÍAS ---
 
 @admin_bp.route('/categorias', methods=['GET', 'POST'])
 def categorias():
     if request.method == 'POST':
         nombre = request.form.get('nombre', '').strip()
-        orden = request.form.get('orden', '1').strip()
+        orden = validar_orden(request.form.get('orden'))
         
-        if not nombre:
-            flash('El nombre de la categoría es obligatorio.', 'danger')
+        if not nombre or len(nombre) > 100 or orden is None:
+            flash('Ingresa un nombre de hasta 100 caracteres y un orden entero positivo.', 'danger')
             return redirect(url_for('admin.categorias'))
             
         # Validación Backend: Evitar nombres duplicados
@@ -246,17 +303,14 @@ def categorias():
             return redirect(url_for('admin.categorias'))
             
         try:
-            nueva_cat = CategoriaAplicacion(
-                nombre=nombre,
-                orden=int(orden) if orden.isdigit() else 1,
-                activo=True
-            )
+            nueva_cat = CategoriaAplicacion(nombre=nombre, orden=orden, activo=True)
             db.session.add(nueva_cat)
             db.session.commit()
-            registrar_log_sistema("Creación Categoría", f"Categoría '{nombre}' creada.", usuario=current_user)
+            registrar_log_sistema('Creación Categoría', f'Categoría ID {nueva_cat.id} creada.', usuario=current_user)
             flash('Categoría creada exitosamente.', 'success')
         except Exception as e:
             db.session.rollback()
+            current_app.logger.exception('Error al crear categoría')
             registrar_log_sistema("Error Creación Categoría", f"Error al crear la categoría '{nombre}': {str(e)}", usuario=current_user)
             flash('Error al crear la categoría.', 'danger')
             
@@ -264,40 +318,45 @@ def categorias():
 
     # Paginación y Listado (Ordenamiento Secundario)
     page = request.args.get('page', 1, type=int)
-    busqueda = request.args.get('busqueda', '')
+    busqueda = request.args.get('busqueda', '').strip()
     
     query = CategoriaAplicacion.query
     if busqueda:
         query = query.filter(CategoriaAplicacion.nombre.ilike(f'%{busqueda}%'))
         
-    pagination = query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
+    pagination = query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).paginate(
+        page=page, per_page=10, error_out=False
+    )
     
     return render_template('admin/categorias.html', pagination=pagination, busqueda=busqueda)
 
 @admin_bp.route('/editar_categoria/<int:id>', methods=['POST'])
 def editar_categoria(id):
-    categoria = CategoriaAplicacion.query.get_or_404(id)
+    categoria = db.get_or_404(CategoriaAplicacion, id)
     nombre = request.form.get('nombre', '').strip()
-    orden = request.form.get('orden', '1').strip()
+    orden = validar_orden(request.form.get('orden'))
 
-    if not nombre:
-        flash('El nombre es obligatorio.', 'danger')
+    if not nombre or len(nombre) > 100 or orden is None:
+        flash('Ingresa un nombre de hasta 100 caracteres y un orden entero positivo.', 'danger')
         return redirect(url_for('admin.categorias'))
 
     # Validación Backend: Evitar nombres duplicados excluyendo la actual
-    existe = CategoriaAplicacion.query.filter(CategoriaAplicacion.nombre == nombre, CategoriaAplicacion.id != id).first()
+    existe = CategoriaAplicacion.query.filter(
+        CategoriaAplicacion.nombre == nombre, CategoriaAplicacion.id != id
+    ).first()
     if existe:
         flash(f'Ya existe otra categoría llamada "{nombre}".', 'warning')
         return redirect(url_for('admin.categorias'))
 
     try:
         categoria.nombre = nombre
-        categoria.orden = int(orden) if orden.isdigit() else 1
+        categoria.orden = orden
         db.session.commit()
-        registrar_log_sistema("Edición Categoría", f"Categoría ID {categoria.id} actualizada.", usuario=current_user)
+        registrar_log_sistema('Edición Categoría', f'Categoría ID {id} actualizada.', usuario=current_user)
         flash('Categoría actualizada correctamente.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al editar categoría ID %s', id)
         registrar_log_sistema("Error Edición Categoría", f"Error: {str(e)}", usuario=current_user)
         flash('Error al actualizar la categoría.', 'danger')
 
@@ -305,51 +364,51 @@ def editar_categoria(id):
 
 @admin_bp.route('/toggle_categoria/<int:id>', methods=['POST'])
 def toggle_categoria(id):
-    categoria = CategoriaAplicacion.query.get_or_404(id)
+    categoria = db.get_or_404(CategoriaAplicacion, id)
     try:
         categoria.activo = not categoria.activo
         db.session.commit()
-        estado = "activada" if categoria.activo else "desactivada"
-        registrar_log_sistema("Cambio Estado Categoría", f"La categoría '{categoria.nombre}' fue {estado}.", usuario=current_user)
-        flash(f"Categoría '{categoria.nombre}' {estado}.", 'success')
+        estado = 'activada' if categoria.activo else 'desactivada'
+        registrar_log_sistema('Cambio Estado Categoría', f'Categoría ID {id} {estado}.', usuario=current_user)
+        flash(f'Categoría "{categoria.nombre}" {estado}.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al cambiar estado de categoría ID %s', id)
         registrar_log_sistema("Error Cambio Estado Categoría", f"Error: {str(e)}", usuario=current_user)
-        flash("Error al cambiar el estado.", 'danger')
+        flash('Error al cambiar el estado.', 'danger')
+
     return redirect(url_for('admin.categorias'))
 
 # --- GESTIÓN DE APLICACIONES ---
 
 @admin_bp.route('/aplicaciones', methods=['GET', 'POST'])
 def aplicaciones():
-    # Solo mostrar categorías activas para crear nuevas apps
-    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
-    tipos = TipoAplicacion.query.filter_by(activo=True).all()
-    
     if request.method == 'POST':
         nombre = request.form.get('nombre', '').strip()
-        slug_raw = request.form.get('slug', '').strip()
-        url_destino = request.form.get('url_destino', '').strip()
-        cat_id = request.form.get('categoria_id')
-        tipo_id = request.form.get('tipo_aplicacion_id')
-        
-        if not all([nombre, slug_raw, url_destino, cat_id, tipo_id]):
-            flash('Faltan campos obligatorios.', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
-        # Validación de URL simple: obligatorio http:// o https://
-        if not url_destino.startswith(('http://', 'https://')):
-            flash('La URL de destino debe comenzar con http:// o https://', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
-        # Validar que la categoría de destino está activa
-        cat_obj = CategoriaAplicacion.query.get(cat_id)
-        if not cat_obj or not cat_obj.activo:
-            flash('No puedes registrar una aplicación en una categoría inactiva o inexistente.', 'danger')
-            return redirect(url_for('admin.aplicaciones'))
-        
         # Normalización Backend a snake_case
-        slug = normalizar_slug(slug_raw)
+        slug = normalizar_slug(request.form.get('slug', '').strip())
+        url = request.form.get('url_destino', '').strip()
+        descripcion = request.form.get('descripcion', '').strip()
+        version = request.form.get('version', '').strip()
+        orden = validar_orden(request.form.get('orden'))
+        cat_id = request.form.get('categoria_id', '').strip()
+        tipo_id = request.form.get('tipo_aplicacion_id', '').strip()
+
+        error = validar_campos_aplicacion(nombre, url, descripcion, version, orden)
+        if error:
+            flash(error, 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        if not slug or len(slug) > 50:
+            flash('El slug debe contener caracteres válidos y tener hasta 50 caracteres.', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
+        
+        # Validar que la categoría y tipo de destino están activos
+        categoria = obtener_categoria_destino(cat_id)
+        tipo = obtener_tipo_destino(tipo_id)
+        if not categoria or not tipo:
+            flash('Selecciona una categoría y un tipo de aplicación activos.', 'danger')
+            return redirect(url_for('admin.aplicaciones'))
             
         # Validación Backend: Evitar nombres o slugs duplicados
         if Aplicacion.query.filter_by(nombre=nombre).first():
@@ -362,111 +421,124 @@ def aplicaciones():
 
         try:
             nueva_app = Aplicacion(
-                nombre=nombre,
-                slug=slug, # Se guarda el normalizado
-                descripcion=request.form.get('descripcion', '').strip(),
-                version=request.form.get('version', '').strip(),
-                url_destino=url_destino,
-                categoria_id=int(cat_id),
-                tipo_aplicacion_id=int(tipo_id),
-                orden=int(request.form.get('orden', '1'))
+                nombre=nombre, slug=slug, descripcion=descripcion, version=version,
+                url_destino=url, categoria_id=categoria.id, tipo_aplicacion_id=tipo.id,
+                orden=orden, activo=True
             )
             db.session.add(nueva_app)
             db.session.commit()
-            registrar_log_sistema("Creación Aplicación", f"App '{nombre}' registrada.", usuario=current_user)
+            registrar_log_sistema('Creación Aplicación', f'Aplicación ID {nueva_app.id} registrada.', usuario=current_user)
             flash('Aplicación registrada exitosamente.', 'success')
         except Exception as e:
             db.session.rollback()
+            current_app.logger.exception('Error al registrar aplicación')
             registrar_log_sistema("Error Creación Aplicación", f"Error al crear la app '{nombre}': {str(e)}", usuario=current_user)
             flash('Error al crear la aplicación.', 'danger')
             
         return redirect(url_for('admin.aplicaciones'))
 
+    # Solo mostrar categorías activas para crear nuevas apps (Para los selects de creación/edición)
+    categorias_activas = CategoriaAplicacion.query.filter_by(activo=True).order_by(
+        CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()
+    ).all()
+    tipos = TipoAplicacion.query.filter_by(activo=True).all()
+
+    # Para el filtro general
+    todas_categorias = CategoriaAplicacion.query.order_by(
+        CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()
+    ).all()
+    todos_tipos = TipoAplicacion.query.order_by(TipoAplicacion.nombre.asc()).all()
+
     # Paginación y Listado (Ordenamiento Secundario)
-    todas_categorias = CategoriaAplicacion.query.order_by(CategoriaAplicacion.orden.asc(), CategoriaAplicacion.nombre.asc()).all()
     page = request.args.get('page', 1, type=int)
-    cat_filtro = request.args.get('categoria_id', '')
-    busqueda = request.args.get('busqueda', '')
+    cat_filtro = request.args.get('categoria_id', '').strip()
+    busqueda = request.args.get('busqueda', '').strip()
 
     query = Aplicacion.query
-    if cat_filtro and cat_filtro.isdigit():
+    if cat_filtro.isascii() and cat_filtro.isdecimal():
         query = query.filter_by(categoria_id=int(cat_filtro))
     if busqueda:
         query = query.filter(or_(Aplicacion.nombre.ilike(f'%{busqueda}%'), Aplicacion.slug.ilike(f'%{busqueda}%')))
         
-    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden.asc(), Aplicacion.nombre.asc()).paginate(page=page, per_page=10, error_out=False)
-
-    return render_template('admin/aplicaciones.html', 
-                           pagination=pagination, 
-                           categorias=categorias_activas, # Para los selects de creación/edición
-                           todas_categorias=todas_categorias, # Para el filtro general
-                           tipos=tipos,
-                           cat_filtro=cat_filtro,
-                           busqueda=busqueda)
+    pagination = query.order_by(Aplicacion.categoria_id, Aplicacion.orden.asc(), Aplicacion.nombre.asc()).paginate(
+        page=page, per_page=10, error_out=False
+    )
     
+    return render_template(
+        'admin/aplicaciones.html', pagination=pagination,
+        categorias=categorias_activas, todas_categorias=todas_categorias,
+        tipos=tipos, todos_tipos=todos_tipos, cat_filtro=cat_filtro, busqueda=busqueda
+    )
+
+
 @admin_bp.route('/editar_aplicacion/<int:id>', methods=['POST'])
 def editar_aplicacion(id):
-    app_obj = Aplicacion.query.get_or_404(id)
+    app_obj = db.get_or_404(Aplicacion, id)
     
     nombre = request.form.get('nombre', '').strip()
     # El slug NO se recibe del POST porque es de solo lectura (inmutable)
-    url_destino = request.form.get('url_destino', '').strip()
-    cat_id = request.form.get('categoria_id')
-    tipo_id = request.form.get('tipo_aplicacion_id')
-
-    if not all([nombre, url_destino, cat_id, tipo_id]):
-        flash('Faltan campos obligatorios.', 'danger')
+    url = request.form.get('url_destino', '').strip()
+    descripcion = request.form.get('descripcion', '').strip()
+    version = request.form.get('version', '').strip()
+    orden = validar_orden(request.form.get('orden'))
+    cat_id = request.form.get('categoria_id', '').strip()
+    tipo_id = request.form.get('tipo_aplicacion_id', '').strip()
+    
+    error = validar_campos_aplicacion(nombre, url, descripcion, version, orden)
+    if error:
+        flash(error, 'danger')
         return redirect(url_for('admin.aplicaciones'))
     
-    if not url_destino.startswith(('http://', 'https://')):
-        flash('La URL de destino debe comenzar obligatoriamente con http:// o https://', 'danger')
-        return redirect(url_for('admin.aplicaciones'))
-    
-    cat_obj = CategoriaAplicacion.query.get(cat_id)
-    if not cat_obj or not cat_obj.activo:
-        flash('No se puede mover la aplicación a una categoría inactiva o inexistente.', 'danger')
+    categoria = obtener_categoria_destino(cat_id, app_obj.categoria_id)
+    tipo = obtener_tipo_destino(tipo_id, app_obj.tipo_aplicacion_id)
+    if not categoria or not tipo:
+        flash('Selecciona una categoría y un tipo válidos. No se permite trasladar a elementos inactivos.', 'danger')
         return redirect(url_for('admin.aplicaciones'))
 
     # Validación Backend: Evitar nombres duplicados excluyendo la actual
-    existe_nombre = Aplicacion.query.filter(Aplicacion.nombre == nombre, Aplicacion.id != id).first()
-    if existe_nombre:
+    existe = Aplicacion.query.filter(Aplicacion.nombre == nombre, Aplicacion.id != id).first()
+    if existe:
         flash(f'Ya existe otra aplicación con el nombre "{nombre}".', 'warning')
         return redirect(url_for('admin.aplicaciones'))
 
     try:
         app_obj.nombre = nombre
-        # app_obj.slug queda intacto
-        app_obj.descripcion = request.form.get('descripcion', '').strip()
-        app_obj.version = request.form.get('version', '').strip()
-        app_obj.url_destino = url_destino
-        app_obj.categoria_id = int(cat_id)
-        app_obj.tipo_aplicacion_id = int(tipo_id)
-        app_obj.orden = int(request.form.get('orden', '1'))
-        
+        # El slug y las relaciones de usuarios/roles no se modifican.
+        app_obj.descripcion = descripcion
+        app_obj.version = version
+        app_obj.url_destino = url
+        app_obj.categoria_id = categoria.id
+        app_obj.tipo_aplicacion_id = tipo.id
+        app_obj.orden = orden
         db.session.commit()
-        registrar_log_sistema("Edición Aplicación", f"App ID {app_obj.id} actualizada.", usuario=current_user)
+        registrar_log_sistema('Edición Aplicación', f'Aplicación ID {id} actualizada.', usuario=current_user)
         flash('Aplicación actualizada correctamente.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al editar aplicación ID %s', id)
         registrar_log_sistema("Error Edición Aplicación", f"Error: {str(e)}", usuario=current_user)
         flash('Error al actualizar la aplicación.', 'danger')
 
     return redirect(url_for('admin.aplicaciones'))
 
+
 @admin_bp.route('/toggle_aplicacion/<int:id>', methods=['POST'])
 def toggle_aplicacion(id):
-    app_obj = Aplicacion.query.get_or_404(id)
+    app_obj = db.get_or_404(Aplicacion, id)
     try:
         app_obj.activo = not app_obj.activo
         db.session.commit()
-        estado = "activada" if app_obj.activo else "desactivada"
-        registrar_log_sistema("Cambio Estado Aplicación", f"La app '{app_obj.nombre}' fue {estado}.", usuario=current_user)
-        flash(f"Aplicación '{app_obj.nombre}' {estado}.", 'success')
+        estado = 'activada' if app_obj.activo else 'desactivada'
+        registrar_log_sistema('Cambio Estado Aplicación', f'Aplicación ID {id} {estado}.', usuario=current_user)
+        flash(f'Aplicación "{app_obj.nombre}" {estado}.', 'success')
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception('Error al cambiar estado de aplicación ID %s', id)
         registrar_log_sistema("Error Cambio Estado Aplicación", f"Error: {str(e)}", usuario=current_user)
-        flash("Error al cambiar el estado.", 'danger')
+        flash('Error al cambiar el estado.', 'danger')
+
     return redirect(url_for('admin.aplicaciones'))
+
 
 @admin_bp.route('/reenviar_activacion/<int:id>', methods=['POST'])
 def reenviar_activacion(id):
@@ -474,6 +546,7 @@ def reenviar_activacion(id):
     if not usuario.activo or not usuario.activacion_pendiente:
         flash('La cuenta no requiere activación o está bloqueada.', 'warning')
         return redirect(url_for('admin.panel'))
+
     # Cuenta destinataria: 3 reenvíos por hora desde cualquier administrador.
     validar_limite('reenviar_activacion_cuenta', str(usuario.id), 3, 60 * 60)
     token, digest, expiracion = generar_token(ACTIVACION_HORAS)
@@ -488,5 +561,7 @@ def reenviar_activacion(id):
             flash('No se pudo enviar el correo. Puedes intentar reenviarlo más tarde.', 'warning')
     except Exception:
         db.session.rollback()
+        current_app.logger.exception('Error al reenviar activación ID %s', id)
         flash('No se pudo renovar el enlace.', 'danger')
+
     return redirect(url_for('admin.panel'))
