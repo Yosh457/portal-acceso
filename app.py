@@ -61,7 +61,7 @@ def create_app():
     # -------------------------------------------------------------------------
     login_manager.session_protection = 'strong'
     login_manager.login_view = 'auth.login'
-    login_manager.login_message = 'Debe iniciar sesión para acceder al Portal.'
+    login_manager.login_message = 'Debes iniciar sesión como administrador para acceder a esta sección.'
     login_manager.login_message_category = 'warning'
 
     # -------------------------------------------------------------------------
@@ -90,7 +90,7 @@ def create_app():
     # -------------------------------------------------------------------------
     @app.route('/')
     def index():
-        return redirect(url_for('auth.login'))
+        return redirect(url_for('portal.index'))
 
     # -------------------------------------------------------------------------
     # ERRORES Y CACHÉ

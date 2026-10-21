@@ -26,36 +26,30 @@
                      alt="Logo Municipalidad Alto Hospicio" 
                      class="h-20 w-auto object-contain">
                 
-                {% if current_user.is_authenticated %}
-                {% if current_user.rol and current_user.rol.nombre == 'Admin' %}
-
+                {% if current_user.is_authenticated and current_user.rol and current_user.rol.nombre == 'Admin' %}
                     {% if request.endpoint and request.endpoint.startswith('admin.') %}
-
                         <a href="{{ url_for('portal.index') }}"
-                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
+                           class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
                             Ir al Portal
                         </a>
-
-                    {% elif request.endpoint and request.endpoint.startswith('portal.') %}
-
+                    {% else %}
                         <a href="{{ url_for('admin.panel') }}"
-                        class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
+                           class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
                             Administración
                         </a>
-
                     {% endif %}
-
-                {% endif %}
-                <form action="{{ url_for('auth.logout') }}" method="POST" class="inline-flex">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit"
-                   class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition shadow-sm">
-                    <svg class="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Cerrar Sesión
-                    </button>
-                </form>
+                    <form action="{{ url_for('auth.logout') }}" method="POST" class="inline-flex">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit"
+                                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition shadow-sm">
+                            Cerrar Sesión
+                        </button>
+                    </form>
+                {% elif not current_user.is_authenticated %}
+                    <a href="{{ url_for('auth.login') }}"
+                       class="inline-flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 transition shadow-sm">
+                        Acceso Admin
+                    </a>
                 {% endif %}
             </div>
 

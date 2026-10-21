@@ -7,14 +7,16 @@
     {# --- ENCABEZADO DE BIENVENIDA --- #}
     <div class="mb-10 text-center md:text-left flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-xl shadow-sm border border-gray-100">
         <div>
-            <h1 class="text-3xl font-bold text-gray-800">Bienvenido, {{ current_user.nombre_completo }}</h1>
+            <h1 class="text-3xl font-bold text-gray-800">{% if current_user.is_authenticated and current_user.rol and current_user.rol.nombre == 'Admin' %}Bienvenido, {{ current_user.nombre_completo }}{% else %}Bienvenido al Portal de Acceso{% endif %}</h1>
             <p class="text-gray-500 mt-1">Seleccione un sistema para comenzar a trabajar.</p>
         </div>
+        {% if current_user.is_authenticated and current_user.rol and current_user.rol.nombre == 'Admin' %}
         <div class="mt-4 md:mt-0">
             <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold bg-blue-50 text-blue-700 border border-blue-100">
-                Rol activo: {{ current_user.rol.nombre }}
+                Rol activo: Admin
             </span>
         </div>
+        {% endif %}
     </div>
 
     {# --- ITERACIÓN DE CATEGORÍAS Y GRID DE APLICACIONES --- #}
@@ -30,7 +32,7 @@
                 {% for app in data.aplicaciones %}
                 
                 {# Siempre abrir en nueva pestaña según la solicitud #}
-                <a href="{{ app.url_destino }}" target="_blank" class="group block bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-lg hover:border-blue-300 transform hover:-translate-y-1 transition-all duration-300 relative">
+                <a href="{{ app.url_destino }}" target="_blank" rel="noopener noreferrer" class="group block bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-lg hover:border-blue-300 transform hover:-translate-y-1 transition-all duration-300 relative">
                     
                     {# Etiqueta de versión (Si existe) #}
                     {% if app.version %}
@@ -61,13 +63,13 @@
         </section>
         {% else %}
         
-        {# Empty state si el usuario no tiene permisos a ninguna app #}
+        {# Estado vacío del catálogo público #}
         <div class="text-center py-20 bg-white rounded-xl shadow-sm border border-gray-100">
             <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <h3 class="text-lg font-medium text-gray-900">Sin aplicaciones asignadas</h3>
-            <p class="mt-1 text-sm text-gray-500">Actualmente no cuentas con permisos para acceder a ningún sistema. Contacta al administrador.</p>
+            <h3 class="text-lg font-medium text-gray-900">No hay aplicaciones disponibles</h3>
+            <p class="mt-1 text-sm text-gray-500">Actualmente no hay aplicaciones activas para mostrar.</p>
         </div>
         {% endfor %}
     </div>

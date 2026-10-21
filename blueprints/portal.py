@@ -1,6 +1,5 @@
 # blueprints/portal.py
 from flask import Blueprint, render_template
-from flask_login import login_required, current_user
 from models import CategoriaAplicacion, Aplicacion
 
 portal_bp = Blueprint('portal', __name__, url_prefix='/portal')
@@ -21,7 +20,6 @@ ICONOS = {
 }
 
 @portal_bp.route('/inicio')
-@login_required
 def index():
     # 1. Obtener todas las categorías activas, ordenadas (secundario por nombre)
     categorias_activas = CategoriaAplicacion.query.filter_by(activo=True)\
@@ -30,11 +28,10 @@ def index():
     dashboard_data = []
     
     for categoria in categorias_activas:
-        # 2. Filtrar aplicaciones permitidas, activas, y ordenarlas (secundario por nombre)
+        # 2. Obtener todas las aplicaciones activas, sin permisos por usuario
         aplicaciones = Aplicacion.query.filter(
             Aplicacion.categoria_id == categoria.id,
-            Aplicacion.activo == True,
-            Aplicacion.usuarios_permitidos.any(id=current_user.id)
+            Aplicacion.activo.is_(True)
         ).order_by(Aplicacion.orden.asc(), Aplicacion.nombre.asc()).all()
         
         # 3. Solo agregar la categoría al dashboard si tiene aplicaciones
