@@ -122,12 +122,12 @@ def crear_usuario():
                     password_hash=None
                 )
                 db.session.add(nuevo_usuario)
-                db.session.commit()
+                db.session.flush()
                 registrar_log_sistema(
                     'Creación Administrador',
                     f'Se creó la cuenta administrativa de {nombre} ({email}).',
-                    usuario=current_user
-                )
+                    usuario=current_user, commit=False)
+                db.session.commit()
                 if enviar_activacion_usuario(nuevo_usuario, token):
                     flash('Administrador creado. Se envió el enlace de activación.', 'success')
                 else:
@@ -135,6 +135,7 @@ def crear_usuario():
                 return redirect(url_for('admin.panel'))
             except Exception:
                 db.session.rollback()
+                current_app.logger.exception('Error al crear administrador')
                 flash('No fue posible crear el administrador. Inténtalo nuevamente.', 'danger')
 
     return render_template('admin/crear_usuario.html', datos_previos=request.form)
@@ -165,16 +166,16 @@ def editar_usuario(id):
                     forzar_cambio if not usuario.activacion_pendiente else False
                 )
                 # El rol y las relaciones con aplicaciones permanecen intactos.
-                db.session.commit()
                 registrar_log_sistema(
                     'Edición Administrador',
                     f'Se actualizó la cuenta administrativa ID {usuario.id}.',
-                    usuario=current_user
-                )
+                    usuario=current_user, commit=False)
+                db.session.commit()
                 flash('Administrador actualizado correctamente.', 'success')
                 return redirect(url_for('admin.panel'))
             except Exception:
                 db.session.rollback()
+                current_app.logger.exception('Error al editar administrador ID %s', id)
                 flash('No se pudo actualizar el administrador.', 'danger')
 
     return render_template('admin/editar_usuario.html', usuario=usuario)
@@ -194,11 +195,12 @@ def toggle_activo(id):
         estado = 'activado' if usuario.activo else 'desactivado'
         registrar_log_sistema(
             'Cambio Estado Administrador',
-            f'Administrador ID {usuario.id} {estado}.', usuario=current_user
-        )
+            f'Administrador ID {usuario.id} {estado}.', usuario=current_user, commit=False)
+        db.session.commit()
         flash(f'Administrador {usuario.nombre_completo} {estado} correctamente.', 'success')
     except Exception:
         db.session.rollback()
+        current_app.logger.exception('Error al cambiar estado de administrador ID %s', id)
         flash('Ocurrió un error al cambiar el estado del administrador.', 'danger')
 
     return redirect(url_for('admin.panel'))
@@ -305,13 +307,14 @@ def categorias():
         try:
             nueva_cat = CategoriaAplicacion(nombre=nombre, orden=orden, activo=True)
             db.session.add(nueva_cat)
+            db.session.flush()
+            registrar_log_sistema('Creación Categoría', f'Categoría ID {nueva_cat.id} creada.', usuario=current_user, commit=False)
             db.session.commit()
-            registrar_log_sistema('Creación Categoría', f'Categoría ID {nueva_cat.id} creada.', usuario=current_user)
             flash('Categoría creada exitosamente.', 'success')
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             current_app.logger.exception('Error al crear categoría')
-            registrar_log_sistema("Error Creación Categoría", f"Error al crear la categoría '{nombre}': {str(e)}", usuario=current_user)
+            registrar_log_sistema('Error Creación Categoría', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
             flash('Error al crear la categoría.', 'danger')
             
         return redirect(url_for('admin.categorias'))
@@ -351,13 +354,13 @@ def editar_categoria(id):
     try:
         categoria.nombre = nombre
         categoria.orden = orden
+        registrar_log_sistema('Edición Categoría', f'Categoría ID {id} actualizada.', usuario=current_user, commit=False)
         db.session.commit()
-        registrar_log_sistema('Edición Categoría', f'Categoría ID {id} actualizada.', usuario=current_user)
         flash('Categoría actualizada correctamente.', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception('Error al editar categoría ID %s', id)
-        registrar_log_sistema("Error Edición Categoría", f"Error: {str(e)}", usuario=current_user)
+        registrar_log_sistema('Error Edición Categoría', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
         flash('Error al actualizar la categoría.', 'danger')
 
     return redirect(url_for('admin.categorias'))
@@ -367,14 +370,14 @@ def toggle_categoria(id):
     categoria = db.get_or_404(CategoriaAplicacion, id)
     try:
         categoria.activo = not categoria.activo
-        db.session.commit()
         estado = 'activada' if categoria.activo else 'desactivada'
-        registrar_log_sistema('Cambio Estado Categoría', f'Categoría ID {id} {estado}.', usuario=current_user)
+        registrar_log_sistema('Cambio Estado Categoría', f'Categoría ID {id} {estado}.', usuario=current_user, commit=False)
+        db.session.commit()
         flash(f'Categoría "{categoria.nombre}" {estado}.', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception('Error al cambiar estado de categoría ID %s', id)
-        registrar_log_sistema("Error Cambio Estado Categoría", f"Error: {str(e)}", usuario=current_user)
+        registrar_log_sistema('Error Cambio Estado Categoría', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
         flash('Error al cambiar el estado.', 'danger')
 
     return redirect(url_for('admin.categorias'))
@@ -426,13 +429,14 @@ def aplicaciones():
                 orden=orden, activo=True
             )
             db.session.add(nueva_app)
+            db.session.flush()
+            registrar_log_sistema('Creación Aplicación', f'Aplicación ID {nueva_app.id} registrada.', usuario=current_user, commit=False)
             db.session.commit()
-            registrar_log_sistema('Creación Aplicación', f'Aplicación ID {nueva_app.id} registrada.', usuario=current_user)
             flash('Aplicación registrada exitosamente.', 'success')
-        except Exception as e:
+        except Exception:
             db.session.rollback()
             current_app.logger.exception('Error al registrar aplicación')
-            registrar_log_sistema("Error Creación Aplicación", f"Error al crear la app '{nombre}': {str(e)}", usuario=current_user)
+            registrar_log_sistema('Error Creación Aplicación', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
             flash('Error al crear la aplicación.', 'danger')
             
         return redirect(url_for('admin.aplicaciones'))
@@ -510,13 +514,13 @@ def editar_aplicacion(id):
         app_obj.categoria_id = categoria.id
         app_obj.tipo_aplicacion_id = tipo.id
         app_obj.orden = orden
+        registrar_log_sistema('Edición Aplicación', f'Aplicación ID {id} actualizada.', usuario=current_user, commit=False)
         db.session.commit()
-        registrar_log_sistema('Edición Aplicación', f'Aplicación ID {id} actualizada.', usuario=current_user)
         flash('Aplicación actualizada correctamente.', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception('Error al editar aplicación ID %s', id)
-        registrar_log_sistema("Error Edición Aplicación", f"Error: {str(e)}", usuario=current_user)
+        registrar_log_sistema('Error Edición Aplicación', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
         flash('Error al actualizar la aplicación.', 'danger')
 
     return redirect(url_for('admin.aplicaciones'))
@@ -527,14 +531,14 @@ def toggle_aplicacion(id):
     app_obj = db.get_or_404(Aplicacion, id)
     try:
         app_obj.activo = not app_obj.activo
-        db.session.commit()
         estado = 'activada' if app_obj.activo else 'desactivada'
-        registrar_log_sistema('Cambio Estado Aplicación', f'Aplicación ID {id} {estado}.', usuario=current_user)
+        registrar_log_sistema('Cambio Estado Aplicación', f'Aplicación ID {id} {estado}.', usuario=current_user, commit=False)
+        db.session.commit()
         flash(f'Aplicación "{app_obj.nombre}" {estado}.', 'success')
-    except Exception as e:
+    except Exception:
         db.session.rollback()
         current_app.logger.exception('Error al cambiar estado de aplicación ID %s', id)
-        registrar_log_sistema("Error Cambio Estado Aplicación", f"Error: {str(e)}", usuario=current_user)
+        registrar_log_sistema('Error Cambio Estado Aplicación', "Fallo al ejecutar la operación; revisar el registro técnico.", usuario=current_user)
         flash('Error al cambiar el estado.', 'danger')
 
     return redirect(url_for('admin.aplicaciones'))
@@ -553,8 +557,8 @@ def reenviar_activacion(id):
     try:
         usuario.activacion_token_hash = digest
         usuario.activacion_token_expiracion = expiracion
+        registrar_log_sistema('Reenvío Activación', f'Nuevo enlace para ID {usuario.id}', usuario=current_user, commit=False)
         db.session.commit()
-        registrar_log_sistema('Reenvío Activación', f'Nuevo enlace para ID {usuario.id}', usuario=current_user)
         if enviar_activacion_usuario(usuario, token):
             flash('Se envió un nuevo enlace de activación.', 'success')
         else:

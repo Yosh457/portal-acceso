@@ -1,7 +1,7 @@
 # app.py
 import os
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for, flash, render_template
+from flask import Flask, redirect, url_for, flash, render_template, request
 from flask_wtf.csrf import CSRFError
 
 # Importamos extensiones y modelos
@@ -105,7 +105,8 @@ def create_app():
 
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
-        flash('La sesión expiró. Ingrese nuevamente.', 'warning')
+        app.logger.warning('Solicitud rechazada por CSRF: %s %s', request.method, request.path)
+        flash('La solicitud no se pudo validar. Actualice la página y vuelva a intentarlo.', 'warning')
         return redirect(url_for('auth.login'))
 
     @app.after_request
@@ -128,6 +129,8 @@ def create_app():
 
     @app.errorhandler(500)
     def internal_server_error(e):
+        db.session.rollback()
+        app.logger.error('Error interno no controlado: %s', type(e).__name__)
         return render_template('errors/500.html'), 500
 
     return app
