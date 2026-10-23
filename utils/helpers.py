@@ -1,73 +1,55 @@
 # utils/helpers.py
-from flask import request
-from flask_login import current_user
 from datetime import datetime
+
 import pytz
+from flask import current_app, has_request_context, request
+from flask_login import current_user
 
 def obtener_hora_chile():
-    """Retorna la fecha y hora actual en Santiago de Chile."""
-    cl_tz = pytz.timezone('America/Santiago')
-    return datetime.now(cl_tz)
+    """Retorna la hora local de Santiago, sin modificar los modelos existentes."""
+    return datetime.now(pytz.timezone('America/Santiago'))
 
 def obtener_ip_cliente():
+    """Usa la IP de Flask; no confía en cabeceras remitidas por el cliente.
+
+    Si en producción se configura un proxy confiable, su tratamiento debe
+    ajustarse explícitamente en el servidor/WSGI antes de esta función.
     """
-    Obtiene la IP real del cliente considerando proxies.
+    return request.remote_addr if has_request_context() else None
 
-    Prioridad:
-    1. X-Forwarded-For → usado por proxies (puede traer múltiples IPs)
-    2. X-Real-IP → usado por algunos proxies simples
-    3. remote_addr → conexión directa
+def registrar_log_sistema(accion, detalles, usuario=None, commit=True):
+    """Registra un evento de auditoría.
+
+    commit=True: evento independiente compatible con llamadas existentes;
+    ante error registra diagnóstico y no altera el flujo de autenticación.
+    commit=False: agrega el evento a la transacción del llamador, sin confirmar;
+    propaga excepciones para que el llamador haga rollback de toda la operación.
+
+    En modo transaccional, invocar ANTES de db.session.commit().
     """
-    try:
-        # Caso 1: Proxy (puede traer varias IPs separadas por coma)
-        if request.headers.get('X-Forwarded-For'):
-            return request.headers.get('X-Forwarded-For').split(',')[0].strip()
-
-        # Caso 2: Proxy simple
-        if request.headers.get('X-Real-IP'):
-            return request.headers.get('X-Real-IP')
-
-        # Caso 3: Directo
-        return request.remote_addr
-
-    except Exception:
-        # En caso de que request falle por algún motivo (tests, contextos raros, etc.)
-        return None
-
-def registrar_log_sistema(accion, detalles, usuario=None):
-    """
-    Registra un evento en la tabla 'log_sistema'.
-    Usa Lazy Import para evitar ciclos con models.py
-    """
-    from models import db, LogSistema 
+    from models import db, LogSistema
 
     try:
-        user_id = None
-        user_nombre = "Sistema/Anónimo"
-
-        if usuario:
-            user_id = usuario.id
-            user_nombre = usuario.nombre_completo
-        elif current_user and current_user.is_authenticated:
-            user_id = current_user.id
-            user_nombre = current_user.nombre_completo
-            
-        ip = obtener_ip_cliente()
+        usuario_actual = usuario
+        if usuario_actual is None and has_request_context() and current_user.is_authenticated:
+            usuario_actual = current_user
 
         nuevo_log = LogSistema(
-            usuario_id=user_id,
-            usuario_nombre=user_nombre,
+            usuario_id=usuario_actual.id if usuario_actual is not None else None,
+            usuario_nombre=(usuario_actual.nombre_completo if usuario_actual is not None
+                            else 'Sistema/Anónimo'),
             accion=accion,
             detalles=detalles,
-            ip_origen=ip,
-            timestamp=obtener_hora_chile()
+            ip_origen=obtener_ip_cliente(),
+            timestamp=obtener_hora_chile(),
         )
         db.session.add(nuevo_log)
-        db.session.commit()
-    except Exception as e:
-        print(f"Error al registrar log: {e}")
-        
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
+        if commit:
+            db.session.commit()
+        return True
+    except Exception:
+        if not commit:
+            raise
+        db.session.rollback()
+        current_app.logger.exception('No fue posible registrar el evento de auditoría: %s', accion)
+        return False

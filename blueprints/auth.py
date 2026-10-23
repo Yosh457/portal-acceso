@@ -58,9 +58,9 @@ def login():
                 flash(f'Bienvenido, {usuario.nombre_completo}', 'success')
                 return redirect(obtener_ruta_redireccion(usuario))
             else:
-                registrar_log_sistema("Login Fallido", f"Contraseña incorrecta para: {email}")
+                registrar_log_sistema("Login Fallido", "Credenciales incorrectas o cuenta sin permisos administrativos.")
         else:
-            registrar_log_sistema("Login Fallido", f"Email no registrado: {email}")
+            registrar_log_sistema("Login Fallido", "Intento de acceso con cuenta no registrada.")
         
         flash('Correo o contraseña incorrectos.', 'danger')
     
@@ -153,9 +153,14 @@ def cambiar_clave():
         else:
             current_user.set_password(nueva_password)
             current_user.cambio_clave_requerido = False
-            db.session.commit()
-            
-            registrar_log_sistema("Cambio de Clave", "Usuario actualizó su contraseña obligatoria.")
+            try:
+                registrar_log_sistema("Cambio de Clave", "Usuario actualizó su contraseña obligatoria.", commit=False)
+                db.session.commit()
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.exception('Fallo al actualizar contraseña obligatoria')
+                flash('No fue posible actualizar la contraseña.', 'danger')
+                return render_template('auth/cambiar_clave.html')
             logout_user()
             session.clear()
             flash('Contraseña actualizada correctamente. Ingresa nuevamente.', 'success')
@@ -185,12 +190,13 @@ def activar_cuenta(token):
                 usuario.activacion_token_hash = None
                 usuario.activacion_token_expiracion = None
                 usuario.cambio_clave_requerido = False
+                registrar_log_sistema('Activación Cuenta', f'Cuenta activada: {usuario.id}', commit=False)
                 db.session.commit()
-                registrar_log_sistema('Activación Cuenta', f'Cuenta activada: {usuario.id}')
                 flash('Cuenta activada. Ya puedes iniciar sesión.', 'success')
                 return redirect(url_for('auth.login'))
             except SQLAlchemyError:
                 db.session.rollback()
+                current_app.logger.exception('Fallo de base de datos en operación de autenticación')
                 flash('No fue posible activar la cuenta. Intenta nuevamente.', 'danger')
     return render_template('auth/activar_cuenta.html')
 
@@ -211,13 +217,13 @@ def solicitar_reseteo():
             try:
                 usuario.reset_token = digest
                 usuario.reset_token_expiracion = expiracion
+                registrar_log_sistema('Solicitud Reseteo', f'Solicitud recibida para ID {usuario.id}', commit=False)
                 db.session.commit()
                 if not enviar_correo_reseteo(usuario, token):
                     registrar_log_sistema('Error Correo Reseteo', f'Fallo al enviar recuperación para ID {usuario.id}')
-                else:
-                    registrar_log_sistema('Solicitud Reseteo', f'Solicitud recibida para ID {usuario.id}')
             except SQLAlchemyError:
                 db.session.rollback()
+                current_app.logger.exception('Fallo de base de datos en operación de autenticación')
         # Misma respuesta para cuentas existentes, inexistentes, inactivas o pendientes.
         flash('Si la cuenta existe y está habilitada, recibirás un enlace de recuperación.', 'info')
         return redirect(url_for('auth.login'))
@@ -249,11 +255,12 @@ def resetear_clave(token):
                 usuario.reset_token = None
                 usuario.reset_token_expiracion = None
                 usuario.cambio_clave_requerido = False
+                registrar_log_sistema('Recuperación Clave', f'Clave recuperada para ID {usuario.id}', commit=False)
                 db.session.commit()
-                registrar_log_sistema('Recuperación Clave', f'Clave recuperada para ID {usuario.id}')
                 flash('Contraseña restablecida. Inicia sesión nuevamente.', 'success')
                 return redirect(url_for('auth.login'))
             except SQLAlchemyError:
                 db.session.rollback()
+                current_app.logger.exception('Fallo de base de datos en operación de autenticación')
                 flash('No fue posible completar la operación.', 'danger')
     return render_template('auth/resetear_clave.html')
