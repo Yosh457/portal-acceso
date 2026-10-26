@@ -92,3 +92,11 @@ body {
 .flash-message.fade-out {
     animation: fadeOut 0.5s ease-in forwards;
 }
+/* Accesibilidad y preferencias del usuario */
+.flash-message { will-change: opacity, transform; }
+@media (prefers-reduced-motion: reduce) {
+    .flash-message, .flash-message.fade-out {
+        animation: none !important;
+        transition: none !important;
+    }
+}
