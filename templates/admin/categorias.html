@@ -72,10 +72,10 @@
                                 </td>
                                 <td class="py-3 px-4 text-center">
                                     <div class="flex justify-center items-center gap-2">
-                                        <button type="button" class="btn btn-secondary text-xs min-h-[40px] w-20 inline-flex justify-center items-center edit-cat-btn" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" data-url="{{ url_for('admin.editar_categoria', id=cat.id) }}">Editar</button>
+                                        <button type="button" class="btn btn-secondary btn-sm min-h-[40px] w-20 inline-flex justify-center items-center edit-cat-btn" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" data-url="{{ url_for('admin.editar_categoria', id=cat.id) }}">Editar</button>
                                         <form action="{{ url_for('admin.toggle_categoria', id=cat.id) }}" method="POST" class="inline m-0">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                            <button type="submit" class="btn {% if cat.activo %}btn-warning{% else %}btn-primary{% endif %} text-xs min-h-[40px] w-24 inline-flex justify-center items-center">{{ 'Desactivar' if cat.activo else 'Activar' }}</button>
+                                            <button type="submit" class="btn {% if cat.activo %}btn-warning{% else %}btn-primary{% endif %} btn-sm min-h-[40px] w-24 inline-flex justify-center items-center">{{ 'Desactivar' if cat.activo else 'Activar' }}</button>
                                         </form>
                                     </div>
                                 </td>

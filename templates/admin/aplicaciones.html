@@ -135,7 +135,7 @@
                                 </td>
                                 <td class="py-3 px-3 text-center"><div class="flex justify-center items-center gap-1.5">
                                     <button type="button" 
-                                            class="btn btn-secondary text-xs w-[72px] min-h-[40px] inline-flex justify-center items-center edit-app-btn"
+                                            class="btn btn-secondary btn-sm w-[72px] min-h-[40px] inline-flex justify-center items-center edit-app-btn"
                                             data-id="{{ app.id }}"
                                             data-edit-url="{{ url_for('admin.editar_aplicacion', id=app.id) }}"
                                             data-categoria="{{ app.categoria_id }}"
@@ -150,7 +150,7 @@
                                     </button>
                                     <form action="{{ url_for('admin.toggle_aplicacion', id=app.id) }}" method="POST" class="inline m-0">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <button type="submit" class="btn {% if app.activo %}btn-warning{% else %}btn-primary{% endif %} text-xs w-[92px] min-h-[40px] inline-flex justify-center items-center">
+                                        <button type="submit" class="btn {% if app.activo %}btn-warning{% else %}btn-primary{% endif %} btn-sm w-[92px] min-h-[40px] inline-flex justify-center items-center">
                                             {{ 'Desactivar' if app.activo else 'Activar' }}
                                         </button>
                                     </form>

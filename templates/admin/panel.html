@@ -18,14 +18,14 @@
 {% macro acciones_usuario(usuario, movil=false) %}
     <div class="flex flex-wrap items-stretch gap-2 {{ 'w-full' if movil else 'justify-center' }}">
         <a href="{{ url_for('admin.editar_usuario', id=usuario.id) }}"
-           class="btn btn-secondary text-xs inline-flex items-center justify-center min-h-[40px] {{ 'flex-1' if movil else '' }}">
+           class="btn btn-secondary inline-flex items-center justify-center min-h-[40px] {{ 'flex-1' if movil else 'btn-sm' }}">
             Editar
         </a>
         {% if usuario.activacion_pendiente and usuario.activo %}
         <form action="{{ url_for('admin.reenviar_activacion', id=usuario.id) }}" method="POST"
               class="m-0 {{ 'w-full order-3' if movil else '' }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button type="submit" class="btn btn-secondary text-xs min-h-[40px] {{ 'w-full' if movil else '' }}">
+            <button type="submit" class="btn btn-secondary min-h-[40px] {{ 'w-full' if movil else 'btn-sm' }}">
                 Reenviar activación
             </button>
         </form>
@@ -34,7 +34,7 @@
               class="m-0 {{ 'flex-1' if movil else '' }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit"
-                    class="btn {{ 'btn-warning' if usuario.activo else 'btn-primary' }} text-xs min-h-[40px] {{ 'w-full' if movil else '' }}">
+                    class="btn {{ 'btn-warning' if usuario.activo else 'btn-primary' }} min-h-[40px] {{ 'w-full' if movil else 'btn-sm' }}">
                 {{ 'Bloquear' if usuario.activo else 'Activar' }}
             </button>
         </form>
@@ -66,7 +66,7 @@
                 <h2 id="titulo-administradores" class="text-xl sm:text-2xl font-bold text-gray-800">Gestión de Administradores</h2>
                 <p class="text-gray-500 text-sm mt-1">Administración de cuentas del equipo TICs.</p>
             </div>
-            <nav aria-label="Acciones administrativas" class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
+            <nav aria-label="Acciones administrativas" class="grid grid-cols-2 gap-2 items-stretch sm:flex sm:flex-wrap lg:justify-end">
                 <a href="{{ url_for('admin.categorias') }}" class="btn btn-secondary text-center inline-flex items-center justify-center min-h-[44px]">Categorías</a>
                 <a href="{{ url_for('admin.aplicaciones') }}" class="btn btn-secondary text-center inline-flex items-center justify-center min-h-[44px]">Aplicaciones</a>
                 <a href="{{ url_for('admin.ver_logs') }}" class="btn btn-secondary text-center inline-flex items-center justify-center min-h-[44px]">Logs</a>

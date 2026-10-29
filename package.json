@@ -1,0 +1,12 @@
+{
+  "name": "portal-acceso-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "css:build": "tailwindcss -i ./frontend/tailwind-input.css -o ./static/css/tailwind.css --minify",
+    "css:watch": "tailwindcss -i ./frontend/tailwind-input.css -o ./static/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
