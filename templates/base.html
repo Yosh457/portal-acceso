@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{% endblock %} - Portal de Acceso</title>
     <link rel="icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <link rel="stylesheet" href="{{ static_versionado('css/tailwind.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ static_versionado('css/style.css') }}">
 </head>
 
 <body class="flex flex-col min-h-screen bg-gray-100">
@@ -94,8 +94,8 @@
     </footer>
     {% endif %}
 
-    <script src="{{ url_for('static', filename='js/flash_messages.js') }}" defer></script>
-    <script src="{{ url_for('static', filename='js/form_submit.js') }}" defer></script>
+    <script src="{{ static_versionado('js/flash_messages.js') }}" defer></script>
+    <script src="{{ static_versionado('js/form_submit.js') }}" defer></script>
 
     {# --- MODAL DE INACTIVIDAD (Solo logueados) --- #}
     {% if current_user.is_authenticated %}
@@ -147,7 +147,7 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/session_timeout.js') }}"></script>
+    <script src="{{ static_versionado('js/session_timeout.js') }}"></script>
     {% endif %}
 
     {% block scripts %}{% endblock %}
