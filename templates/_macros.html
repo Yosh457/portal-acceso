@@ -8,19 +8,19 @@
     {# 3. Removemos el argumento 'page' para evitar duplicados, ya que lo pasaremos explícitamente. #}
     {% do query_args.pop('page', None) %}
 
-<nav class="mt-6 flex items-center justify-between border-t border-gray-200 px-4 sm:px-0">
+<nav aria-label="Paginación" class="mt-6 flex items-center justify-between border-t border-gray-200 px-4 sm:px-0">
     <div class="flex w-0 flex-1">
         {% if pagination.has_prev %}
-            <a href="{{ url_for(endpoint, page=pagination.prev_num, **query_args) }}{{ fragment }}" class="inline-flex items-center border-t-2 border-transparent pr-1 pt-4 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+            <a href="{{ url_for(endpoint, page=pagination.prev_num, **query_args) }}{{ fragment }}" class="inline-flex items-center border-t-2 border-transparent pr-1 pt-4 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
                 &larr; Anterior
             </a>
         {% endif %}
     </div>
     
-    <div class="hidden md:flex">
+    <div class="hidden sm:flex">
         {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
             {% if page_num %}
-                <a href="{{ url_for(endpoint, page=page_num, **query_args) }}{{ fragment }}" class="inline-flex items-center border-t-2 px-4 pt-4 text-sm font-medium {% if pagination.page == page_num %} border-indigo-500 text-indigo-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 {% endif %}">
+                <a href="{{ url_for(endpoint, page=page_num, **query_args) }}{{ fragment }}" aria-label="Página {{ page_num }}" {% if pagination.page == page_num %}aria-current="page"{% endif %} class="inline-flex items-center border-t-2 px-3 pt-4 text-sm font-medium {% if pagination.page == page_num %} border-indigo-500 text-indigo-600 {% else %} border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 {% endif %}">
                     {{ page_num }}
                 </a>
             {% else %}
@@ -29,9 +29,11 @@
         {% endfor %}
     </div>
 
+    <span class="sm:hidden self-center text-sm text-gray-600" aria-current="page">Página {{ pagination.page }} de {{ pagination.pages }}</span>
+
     <div class="flex w-0 flex-1 justify-end">
         {% if pagination.has_next %}
-            <a href="{{ url_for(endpoint, page=pagination.next_num, **query_args) }}{{ fragment }}" class="inline-flex items-center border-t-2 border-transparent pl-1 pt-4 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+            <a href="{{ url_for(endpoint, page=pagination.next_num, **query_args) }}{{ fragment }}" class="inline-flex items-center border-t-2 border-transparent pl-1 pt-4 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
                 Siguiente &rarr;
             </a>
         {% endif %}

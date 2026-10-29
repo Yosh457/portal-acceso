@@ -1,7 +1,7 @@
 # app.py
 import os
 from dotenv import load_dotenv
-from flask import Flask, redirect, url_for, flash, render_template, request
+from flask import Flask, redirect, url_for, flash, render_template, request, session
 from flask_wtf.csrf import CSRFError
 
 # Importamos extensiones y modelos
@@ -76,6 +76,19 @@ def create_app():
     from blueprints.portal import portal_bp
     app.register_blueprint(portal_bp)
 
+    # Versiona los recursos estáticos usando su fecha de modificación.
+    # De este modo, el navegador solicita la versión nueva cuando cambia un archivo.
+    def static_versionado(filename):
+        ruta = os.path.join(app.static_folder, filename)
+        try:
+            version = os.stat(ruta).st_mtime_ns
+        except OSError:
+            # Flask seguirá devolviendo 404 si el archivo no existe.
+            return url_for('static', filename=filename)
+        return url_for('static', filename=filename, v=version)
+
+    app.jinja_env.globals['static_versionado'] = static_versionado
+
     # -------------------------------------------------------------------------
     # RESTRICCIONES TRANSVERSALES DE SESIÓN
     # -------------------------------------------------------------------------
@@ -111,11 +124,27 @@ def create_app():
 
     @app.after_request
     def add_header(response):
-        """Desactiva el caché para evitar problemas al volver atrás en el navegador"""
-        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '-1'
+        """Distingue archivos públicos, catálogo y respuestas sensibles."""
         response.headers['Referrer-Policy'] = 'no-referrer'
+
+        # Los errores no deben quedar almacenados, especialmente las
+        # respuestas de autenticación, rate limiting o fallos del servidor.
+        if response.status_code >= 400:
+            response.headers['Cache-Control'] = 'no-store'
+        elif request.endpoint == 'static':
+            # Conserva ETag y Last-Modified generados por Flask.
+            # El versionado de URL evita reutilizar CSS/JS obsoletos.
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+        elif request.endpoint == 'portal.index' and not session.get('_user_id'):
+            # La página pública puede almacenarse, pero debe revalidarse
+            # antes de mostrar cambios en categorías o aplicaciones.
+            response.headers['Cache-Control'] = 'private, no-cache, max-age=0, must-revalidate'
+        else:
+            # Administración, autenticación, redirecciones y API de sesión.
+            response.headers['Cache-Control'] = 'private, no-store'
+
+        response.headers.pop('Pragma', None)
+        response.headers.pop('Expires', None)
         return response
 
     # MANEJO DE ERRORES PERSONALIZADOS

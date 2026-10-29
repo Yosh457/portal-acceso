@@ -14,3 +14,6 @@ __pycache__/
 # Archivos de SO
 .DS_Store
 Thumbs.db
+
+# Dependencias de Node.js
+node_modules/

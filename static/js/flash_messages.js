@@ -1,17 +1,33 @@
-// static/js/flash_messages.js
-document.addEventListener("DOMContentLoaded", () => {
-    const flashMessages = document.querySelectorAll(".flash-message");
+/* Notificaciones reutilizables: todas se cierran automáticamente o a petición del usuario. */
+document.addEventListener('DOMContentLoaded', () => {
+    const reducirMovimiento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    flashMessages.forEach((message) => {
-        // Espera 5 segundos
-        setTimeout(() => {
-            // Añade la clase que dispara la animación de salida
-            message.classList.add("fade-out");
+    document.querySelectorAll('.flash-message').forEach((mensaje) => {
+        const categoria = mensaje.dataset.flashCategory;
+        const duracionMs = categoria === 'danger' ? 7000 : 5000;
+        let cerrando = false;
+        let temporizador = null;
 
-            // Espera a que termine la animación para eliminar el elemento
-            message.addEventListener("animationend", () => {
-                message.remove();
-            });
-        }, 5000); // 5000 milisegundos = 5 segundos
+        function cerrar() {
+            if (cerrando) return;
+            cerrando = true;
+            window.clearTimeout(temporizador);
+
+            if (reducirMovimiento) {
+                mensaje.remove();
+                return;
+            }
+
+            mensaje.classList.add('fade-out');
+            mensaje.addEventListener('animationend', (evento) => {
+                if (evento.target === mensaje) mensaje.remove();
+            }, { once: true });
+            // Respaldo si la animación no llega a disparar su evento.
+            window.setTimeout(() => mensaje.remove(), 700);
+        }
+
+        const boton = mensaje.querySelector('button[aria-label="Cerrar notificación"]');
+        if (boton) boton.addEventListener('click', cerrar);
+        temporizador = window.setTimeout(cerrar, duracionMs);
     });
 });

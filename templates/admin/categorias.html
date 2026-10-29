@@ -3,174 +3,193 @@
 {% from '_macros.html' import render_pagination %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto my-12 px-4 sm:px-0">
-    
-    <div class="flex justify-between items-center mb-8 border-b pb-4">
-        <div>
+<div class="max-w-7xl mx-auto my-6 sm:my-10 lg:my-12 px-4 sm:px-6 lg:px-8">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8 border-b border-gray-200 pb-4">
+        <div class="min-w-0">
             <h2 class="text-2xl font-bold text-gray-800">Categorías de Aplicaciones</h2>
-            <p class="text-gray-500 text-sm">Gestiona las agrupaciones visuales del Portal de Acceso.</p>
+            <p class="text-gray-500 text-sm mt-1">Gestiona las agrupaciones visuales del Portal de Acceso.</p>
         </div>
-        <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary">
+        <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary self-start sm:self-auto inline-flex items-center justify-center shrink-0 min-h-[44px]">
             &larr; Volver al Panel
         </a>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {# --- COLUMNA IZQUIERDA: CREAR --- #}
-        <div class="lg:col-span-1">
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                <h3 class="text-lg font-bold text-gray-800 mb-4">Crear Nueva Categoría</h3>
-                
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 items-start">
+        <section class="lg:col-span-1" aria-labelledby="titulo-crear-categoria">
+            <div class="bg-white p-5 sm:p-6 rounded-xl shadow-lg border border-gray-100">
+                <h3 id="titulo-crear-categoria" class="text-lg font-bold text-gray-800 mb-4">Crear Nueva Categoría</h3>
                 <form method="POST" action="{{ url_for('admin.categorias') }}" class="space-y-4">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                    
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
-                        <input type="text" name="nombre" maxlength="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: Sistemas Clínicos" required>
+                        <label for="categoria-nombre" class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
+                        <input id="categoria-nombre" type="text" name="nombre" maxlength="100" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: Sistemas Clínicos" required>
                     </div>
-
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Orden de visualización *</label>
-                        <input type="number" name="orden" value="1" min="1" max="2147483647" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                        <label for="categoria-orden" class="block text-sm font-bold text-gray-700 mb-1">Orden de visualización *</label>
+                        <input id="categoria-orden" type="number" name="orden" value="1" min="1" max="2147483647" step="1" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
                         <p class="text-xs text-gray-500 mt-1">Determina el orden de aparición en el Portal.</p>
                     </div>
-
                     <div class="pt-4">
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition">
-                            Guardar Categoría
-                        </button>
+                        <button type="submit" class="w-full min-h-[44px] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg shadow-md transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">Guardar Categoría</button>
                     </div>
                 </form>
             </div>
-        </div>
+        </section>
 
-        {# --- COLUMNA DERECHA: LISTADO --- #}
-        <div class="lg:col-span-2">
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                
-                {# Filtro rápido #}
-                <form method="GET" action="{{ url_for('admin.categorias') }}" class="mb-6 flex gap-2">
-                    <input type="text" name="busqueda" value="{{ busqueda }}" class="flex-grow px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Buscar por nombre...">
-                    <a href="{{ url_for('admin.categorias') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center">Limpiar</a>
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">Buscar</button>
+        <section class="lg:col-span-2 min-w-0" aria-label="Listado de categorías">
+            <div class="bg-white p-4 sm:p-6 rounded-xl shadow-lg border border-gray-100">
+                <form method="GET" action="{{ url_for('admin.categorias') }}" role="search" class="mb-6 flex flex-col sm:flex-row gap-2">
+                    <label class="sr-only" for="busqueda-categoria">Buscar categorías por nombre</label>
+                    <input id="busqueda-categoria" type="search" name="busqueda" value="{{ busqueda }}" class="w-full min-w-0 flex-1 px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Buscar por nombre...">
+                    <div class="grid grid-cols-2 sm:flex gap-2 shrink-0">
+                        <a href="{{ url_for('admin.categorias') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2.5 rounded-lg text-sm font-semibold transition inline-flex items-center justify-center min-h-[44px]">Limpiar</a>
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition min-h-[44px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">Buscar</button>
+                    </div>
                 </form>
 
-                {# Tabla #}
-                <div class="overflow-x-auto rounded-lg border border-gray-200">
+                {# Tabla de escritorio y tabletas. #}
+                <div class="hidden md:block overflow-x-auto rounded-lg border border-gray-200">
                     <table class="min-w-full bg-white">
                         <thead class="bg-gray-100 border-b border-gray-200">
                             <tr>
-                                <th class="text-left py-3 px-4 font-bold text-xs text-gray-500 uppercase">Nombre</th>
-                                <th class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Orden</th>
-                                <th class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Estado</th>
-                                <th class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Acciones</th>
+                                <th scope="col" class="text-left py-3 px-4 font-bold text-xs text-gray-500 uppercase">Nombre</th>
+                                <th scope="col" class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Orden</th>
+                                <th scope="col" class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Estado</th>
+                                <th scope="col" class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
                             {% for cat in pagination.items %}
                             <tr class="hover:bg-gray-50 transition">
-                                <td class="py-3 px-4 text-sm font-bold text-gray-800">{{ cat.nombre }}</td>
+                                <td class="py-3 px-4 text-sm font-bold text-gray-800 break-words">{{ cat.nombre }}</td>
                                 <td class="py-3 px-4 text-sm text-gray-600 text-center">{{ cat.orden }}</td>
                                 <td class="py-3 px-4 text-center">
                                     {% if cat.activo %}
-                                        <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Activa</span>
+                                    <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Activa</span>
                                     {% else %}
-                                        <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">Inactiva</span>
+                                    <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">Inactiva</span>
                                     {% endif %}
                                 </td>
-                                <td class="py-3 px-4 text-center flex justify-center gap-2">
-                                    <button type="button" 
-                                            class="btn btn-secondary text-xs w-20 flex justify-center items-center edit-cat-btn"
-                                            data-id="{{ cat.id }}"
-                                            data-nombre="{{ cat.nombre }}"
-                                            data-orden="{{ cat.orden }}">
-                                        Editar
-                                    </button>
-                                    <form action="{{ url_for('admin.toggle_categoria', id=cat.id) }}" method="POST" class="inline m-0">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <button type="submit" class="btn {% if cat.activo %}btn-warning{% else %}btn-primary{% endif %} text-xs w-24 flex justify-center items-center">
-                                            {{ 'Desactivar' if cat.activo else 'Activar' }}
-                                        </button>
-                                    </form>
+                                <td class="py-3 px-4 text-center">
+                                    <div class="flex justify-center items-center gap-2">
+                                        <button type="button" class="btn btn-secondary btn-sm min-h-[40px] w-20 inline-flex justify-center items-center edit-cat-btn" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" data-url="{{ url_for('admin.editar_categoria', id=cat.id) }}">Editar</button>
+                                        <form action="{{ url_for('admin.toggle_categoria', id=cat.id) }}" method="POST" class="inline m-0">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn {% if cat.activo %}btn-warning{% else %}btn-primary{% endif %} btn-sm min-h-[40px] w-24 inline-flex justify-center items-center">{{ 'Desactivar' if cat.activo else 'Activar' }}</button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% else %}
-                            <tr>
-                                <td colspan="4" class="text-center py-8 text-gray-500 bg-gray-50">
-                                    No hay categorías registradas.
-                                </td>
-                            </tr>
+                            <tr><td colspan="4" class="text-center py-8 text-gray-500 bg-gray-50">No hay categorías registradas.</td></tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
+
+                {# Tarjetas móviles: mismas acciones, sin desplazamiento horizontal. #}
+                <div class="md:hidden space-y-3" aria-label="Categorías registradas">
+                    {% for cat in pagination.items %}
+                    <article class="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                            <h3 class="min-w-0 flex-1 text-base font-semibold text-gray-800 break-words">{{ cat.nombre }}</h3>
+                            {% if cat.activo %}
+                            <span class="shrink-0 inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Activa</span>
+                            {% else %}
+                            <span class="shrink-0 inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">Inactiva</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-sm text-gray-600">Orden de visualización: <span class="font-semibold text-gray-800">{{ cat.orden }}</span></p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" class="btn btn-secondary min-h-[44px] inline-flex items-center justify-center edit-cat-btn" data-id="{{ cat.id }}" data-nombre="{{ cat.nombre }}" data-orden="{{ cat.orden }}" data-url="{{ url_for('admin.editar_categoria', id=cat.id) }}">Editar</button>
+                            <form action="{{ url_for('admin.toggle_categoria', id=cat.id) }}" method="POST" class="m-0 min-w-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn {% if cat.activo %}btn-warning{% else %}btn-primary{% endif %} w-full min-h-[44px] inline-flex items-center justify-center">{{ 'Desactivar' if cat.activo else 'Activar' }}</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% else %}
+                    <p class="rounded-lg bg-gray-50 py-8 px-4 text-center text-gray-500">No hay categorías registradas.</p>
+                    {% endfor %}
+                </div>
                 {{ render_pagination(pagination, 'admin.categorias') }}
             </div>
-        </div>
-
+        </section>
     </div>
 </div>
 
-{# --- MODAL DE EDICIÓN --- #}
-<div id="edit-cat-modal" class="fixed inset-0 z-50 items-center justify-center hidden bg-black bg-opacity-50 backdrop-blur-sm flex">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 m-4 transform transition-all scale-100">
-        <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-bold text-gray-800">Editar Categoría</h3>
-            <button type="button" id="close-edit-modal" class="text-gray-400 hover:text-gray-600 focus:outline-none">
-                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+{# Modal: oculto de verdad hasta que JS incorpora flex. #}
+<div id="edit-cat-modal" class="fixed inset-0 z-[9998] hidden items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="edit-cat-title" aria-hidden="true">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-md p-5 sm:p-6 my-auto max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        <div class="flex justify-between items-center gap-3 mb-5">
+            <h3 id="edit-cat-title" class="text-xl font-bold text-gray-800">Editar Categoría</h3>
+            <button type="button" id="close-edit-modal" class="p-2 text-gray-500 hover:text-gray-800 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600" aria-label="Cerrar edición de categoría">
+                <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
-        
         <form id="edit-cat-form" method="POST" action="" class="space-y-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-            
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
-                <input type="text" name="nombre" id="edit-nombre" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                <label for="edit-nombre" class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
+                <input type="text" name="nombre" id="edit-nombre" maxlength="100" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
             </div>
-
-            <div class="mb-2">
-                <label class="block text-sm font-bold text-gray-700 mb-1">Orden de visualización *</label>
-                <input type="number" name="orden" id="edit-orden" min="1" max="2147483647" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+            <div>
+                <label for="edit-orden" class="block text-sm font-bold text-gray-700 mb-1">Orden de visualización *</label>
+                <input type="number" name="orden" id="edit-orden" min="1" max="2147483647" step="1" class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
             </div>
-
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" id="cancel-edit-modal" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">Cancelar</button>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold">Guardar Cambios</button>
+            <div class="grid grid-cols-1 sm:flex sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-100">
+                <button type="submit" class="order-1 sm:order-2 px-4 py-2.5 min-h-[44px] bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold">Guardar Cambios</button>
+                <button type="button" id="cancel-edit-modal" class="order-2 sm:order-1 px-4 py-2.5 min-h-[44px] bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">Cancelar</button>
             </div>
         </form>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    const editModal = document.getElementById('edit-cat-modal');
-    const editForm = document.getElementById('edit-cat-form');
-    const editNombre = document.getElementById('edit-nombre');
-    const editOrden = document.getElementById('edit-orden');
-    const closeBtns = [document.getElementById('close-edit-modal'), document.getElementById('cancel-edit-modal')];
+    const modal = document.getElementById('edit-cat-modal');
+    const form = document.getElementById('edit-cat-form');
+    const nombre = document.getElementById('edit-nombre');
+    const orden = document.getElementById('edit-orden');
+    const closeButtons = [document.getElementById('close-edit-modal'), document.getElementById('cancel-edit-modal')];
+    let previousFocus = null;
 
-    document.querySelectorAll('.edit-cat-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            editNombre.value = this.dataset.nombre;
-            editOrden.value = this.dataset.orden;
-            editForm.action = `/admin/editar_categoria/${this.dataset.id}`;
-            editModal.classList.remove('hidden');
+    function closeModal() {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('overflow-hidden');
+        if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+    }
+
+    document.querySelectorAll('.edit-cat-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            previousFocus = button;
+            nombre.value = button.dataset.nombre;
+            orden.value = button.dataset.orden;
+            form.action = button.dataset.url;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('overflow-hidden');
+            nombre.focus();
         });
     });
 
-    closeBtns.forEach(btn => {
-        if (btn) btn.addEventListener('click', () => editModal.classList.add('hidden'));
+    closeButtons.forEach(button => button?.addEventListener('click', closeModal));
+    modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
+    modal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+        if (event.key !== 'Tab') return;
+        const targets = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]')].filter(element => element.getClientRects().length);
+        if (!targets.length) return;
+        if (event.shiftKey && document.activeElement === targets[0]) { event.preventDefault(); targets[targets.length - 1].focus(); }
+        else if (!event.shiftKey && document.activeElement === targets[targets.length - 1]) { event.preventDefault(); targets[0].focus(); }
     });
-
-    editModal.addEventListener('click', (e) => {
-        if (e.target === editModal) editModal.classList.add('hidden');
+    window.addEventListener('pageshow', () => {
+        if (!modal.classList.contains('hidden')) closeModal();
     });
 });
 </script>

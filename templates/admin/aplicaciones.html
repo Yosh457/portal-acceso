@@ -3,31 +3,31 @@
 {% from '_macros.html' import render_pagination %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto my-12 px-4 sm:px-0">
+<div class="max-w-screen-2xl mx-auto my-6 sm:my-10 lg:my-12 px-4 sm:px-6 lg:px-8">
     
-    <div class="flex justify-between items-center mb-8 border-b pb-4">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 sm:mb-8 border-b border-gray-200 pb-4">
         <div>
             <h2 class="text-2xl font-bold text-gray-800">Gestión de Aplicaciones</h2>
             <p class="text-gray-500 text-sm">Administra los sistemas disponibles en el Portal de Acceso.</p>
         </div>
-        <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary">
+        <a href="{{ url_for('admin.panel') }}" class="btn btn-secondary self-start sm:self-auto inline-flex items-center justify-center shrink-0 min-h-[44px]">
             &larr; Volver al Panel
         </a>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div class="grid grid-cols-1 xl:grid-cols-4 gap-6 xl:gap-8 items-start">
         
         {# --- COLUMNA IZQUIERDA: CREAR --- #}
-        <div class="lg:col-span-1">
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
-                <h3 class="text-lg font-bold text-gray-800 mb-4">Registrar Sistema</h3>
+        <section class="xl:col-span-1 min-w-0" aria-labelledby="titulo-crear-aplicacion">
+            <div class="bg-white p-5 sm:p-6 rounded-xl shadow-lg border border-gray-100">
+                <h3 id="titulo-crear-aplicacion" class="text-lg font-bold text-gray-800 mb-4">Registrar Sistema</h3>
                 
                 <form method="POST" action="{{ url_for('admin.aplicaciones') }}" class="space-y-4">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Categoría *</label>
-                        <select name="categoria_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
+                        <label for="app-categoria" class="block text-sm font-bold text-gray-700 mb-1">Categoría *</label>
+                        <select name="categoria_id" id="app-categoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
                             <option value="" disabled selected>-- Seleccionar --</option>
                             {% for cat in categorias %}
                                 <option value="{{ cat.id }}">{{ cat.nombre }}</option>
@@ -36,8 +36,8 @@
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Tipo de Apertura *</label>
-                        <select name="tipo_aplicacion_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
+                        <label for="app-tipo" class="block text-sm font-bold text-gray-700 mb-1">Tipo de Apertura *</label>
+                        <select name="tipo_aplicacion_id" id="app-tipo" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
                             {% for tipo in tipos %}
                                 <option value="{{ tipo.id }}">{{ tipo.nombre }}</option>
                             {% endfor %}
@@ -45,98 +45,99 @@
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Nombre Visible *</label>
+                        <label for="app_nombre" class="block text-sm font-bold text-gray-700 mb-1">Nombre Visible *</label>
                         <input type="text" name="nombre" id="app_nombre" maxlength="150" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: Fichas Clínicas" required>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Identificador Único (Slug) *</label>
+                        <label for="app_slug" class="block text-sm font-bold text-gray-700 mb-1">Identificador Único (Slug) *</label>
                         <input type="text" name="slug" id="app_slug" maxlength="50" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-100 text-gray-600 cursor-not-allowed" placeholder="fichas_clinicas" readonly required>
                         <p class="text-xs text-gray-500 mt-1">Identificador interno del sistema. Se genera automáticamente y no podrá modificarse posteriormente.</p>
                     </div>
 
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">URL Destino *</label>
-                        <input type="url" name="url_destino" maxlength="500" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="http://..." required>
+                        <label for="app-url" class="block text-sm font-bold text-gray-700 mb-1">URL Destino *</label>
+                        <input type="url" name="url_destino" id="app-url" maxlength="500" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="http://..." required>
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Descripción Breve</label>
-                        <textarea name="descripcion" maxlength="255" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="¿Para qué sirve este sistema?"></textarea>
+                        <label for="app-descripcion" class="block text-sm font-bold text-gray-700 mb-1">Descripción Breve</label>
+                        <textarea name="descripcion" id="app-descripcion" maxlength="255" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="¿Para qué sirve este sistema?"></textarea>
                     </div>
                     
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Versión</label>
-                            <input type="text" name="version" maxlength="50" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: v1.0.0">
+                            <label for="app-version" class="block text-sm font-bold text-gray-700 mb-1">Versión</label>
+                            <input type="text" name="version" id="app-version" maxlength="50" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ej: v1.0.0">
                         </div>
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-1">Orden *</label>
-                            <input type="number" name="orden" value="1" min="1" max="2147483647" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            <label for="app-orden" class="block text-sm font-bold text-gray-700 mb-1">Orden *</label>
+                            <input type="number" name="orden" id="app-orden" value="1" min="1" max="2147483647" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
                         </div>
                     </div>
 
                     <div class="pt-4">
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md transition">
+                        <button type="submit" class="w-full min-h-[44px] bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-lg shadow-md transition">
                             Guardar Sistema
                         </button>
                     </div>
                 </form>
             </div>
-        </div>
+        </section>
 
         {# --- COLUMNA DERECHA: LISTADO --- #}
-        <div class="lg:col-span-2">
-            <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-100">
+        <section class="xl:col-span-3 min-w-0" aria-label="Aplicaciones registradas">
+            <div class="bg-white p-5 sm:p-6 rounded-xl shadow-lg border border-gray-100">
                 
-                <form method="GET" action="{{ url_for('admin.aplicaciones') }}" class="mb-6 flex flex-col sm:flex-row gap-2">
-                    <select name="categoria_id" class="w-full sm:w-1/3 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-sm">
+                <form method="GET" action="{{ url_for('admin.aplicaciones') }}" role="search" class="mb-6 flex flex-col sm:flex-row gap-2">
+                    <select name="categoria_id" id="filtro-app-categoria" aria-label="Filtrar por categoría" class="w-full sm:w-1/3 px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 text-sm">
                         <option value="">Todas las Categorías</option>
                         {% for cat in todas_categorias %}
                             <option value="{{ cat.id }}" {% if cat_filtro == cat.id|string %}selected{% endif %}>{{ cat.nombre }}</option>
                         {% endfor %}
                     </select>
-                    <input type="text" name="busqueda" value="{{ busqueda }}" class="w-full sm:w-auto flex-grow px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Buscar por nombre o slug...">
-                    <div class="flex gap-2 w-full sm:w-auto justify-end">
+                    <input type="search" aria-label="Buscar aplicaciones por nombre o slug" name="busqueda" value="{{ busqueda }}" class="w-full sm:w-auto min-w-0 flex-grow px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" placeholder="Buscar por nombre o slug...">
+                    <div class="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
                         <a href="{{ url_for('admin.aplicaciones') }}" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center justify-center">Limpiar</a>
                         <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition flex items-center justify-center">Filtrar</button>
                     </div>
                 </form>
 
-                <div class="overflow-x-auto rounded-lg border border-gray-200">
-                    <table class="min-w-full bg-white">
+                <div class="hidden lg:block overflow-x-auto rounded-lg border border-gray-200">
+                    <table class="w-full table-auto bg-white">
                         <thead class="bg-gray-100 border-b border-gray-200">
                             <tr>
-                                <th class="text-left py-3 px-4 font-bold text-xs text-gray-500 uppercase">Categoría</th>
-                                <th class="text-left py-3 px-4 font-bold text-xs text-gray-500 uppercase">Sistema / Slug</th>
-                                <th class="text-left py-3 px-4 font-bold text-xs text-gray-500 uppercase hidden md:table-cell">Detalles</th>
-                                <th class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Estado</th>
-                                <th class="text-center py-3 px-4 font-bold text-xs text-gray-500 uppercase">Acciones</th>
+                                <th class="text-left py-3 px-3 font-bold text-xs text-gray-500 uppercase">Categoría</th>
+                                <th class="text-left py-3 px-3 font-bold text-xs text-gray-500 uppercase">Sistema / Slug</th>
+                                <th class="text-left py-3 px-3 font-bold text-xs text-gray-500 uppercase hidden lg:table-cell">Detalles</th>
+                                <th class="text-center py-3 px-3 font-bold text-xs text-gray-500 uppercase">Estado</th>
+                                <th class="text-center py-3 px-3 font-bold text-xs text-gray-500 uppercase">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
                             {% for app in pagination.items %}
                             <tr class="hover:bg-gray-50 transition">
-                                <td class="py-3 px-4 text-xs font-medium text-gray-500">{{ app.categoria.nombre }}</td>
-                                <td class="py-3 px-4">
+                                <td class="py-3 px-3 text-xs font-medium text-gray-500">{{ app.categoria.nombre }}</td>
+                                <td class="py-3 px-3">
                                     <div class="text-sm font-bold text-gray-800">{{ app.nombre }}</div>
                                     <div class="text-xs text-gray-500 font-mono">{{ app.slug }}</div>
                                 </td>
-                                <td class="py-3 px-4 text-xs text-gray-500 hidden md:table-cell">
+                                <td class="py-3 px-3 text-xs text-gray-500 hidden lg:table-cell">
                                     <div class="truncate max-w-[150px]" title="{{ app.url_destino }}">{{ app.url_destino }}</div>
                                     {% if app.version %}<span class="bg-gray-100 px-1 rounded">{{ app.version }}</span>{% endif %}
                                 </td>
-                                <td class="py-3 px-4 text-center">
+                                <td class="py-3 px-3 text-center">
                                     {% if app.activo %}
                                         <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Activo</span>
                                     {% else %}
                                         <span class="inline-flex px-2 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">Inactivo</span>
                                     {% endif %}
                                 </td>
-                                <td class="py-3 px-4 text-center flex justify-center gap-2">
+                                <td class="py-3 px-3 text-center"><div class="flex justify-center items-center gap-1.5">
                                     <button type="button" 
-                                            class="btn btn-secondary text-xs w-16 flex justify-center items-center edit-app-btn"
+                                            class="btn btn-secondary btn-sm w-[72px] min-h-[40px] inline-flex justify-center items-center edit-app-btn"
                                             data-id="{{ app.id }}"
+                                            data-edit-url="{{ url_for('admin.editar_aplicacion', id=app.id) }}"
                                             data-categoria="{{ app.categoria_id }}"
                                             data-tipo="{{ app.tipo_aplicacion_id }}"
                                             data-nombre="{{ app.nombre }}"
@@ -149,10 +150,11 @@
                                     </button>
                                     <form action="{{ url_for('admin.toggle_aplicacion', id=app.id) }}" method="POST" class="inline m-0">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                                        <button type="submit" class="btn {% if app.activo %}btn-warning{% else %}btn-primary{% endif %} text-xs w-24 flex justify-center items-center">
+                                        <button type="submit" class="btn {% if app.activo %}btn-warning{% else %}btn-primary{% endif %} btn-sm w-[92px] min-h-[40px] inline-flex justify-center items-center">
                                             {{ 'Desactivar' if app.activo else 'Activar' }}
                                         </button>
                                     </form>
+                                    </div>
                                 </td>
                             </tr>
                             {% else %}
@@ -165,19 +167,56 @@
                         </tbody>
                     </table>
                 </div>
+                {# En móvil se muestran tarjetas en lugar de una tabla desplazable. #}
+                <div class="lg:hidden space-y-3" aria-label="Aplicaciones registradas">
+                    {% for app in pagination.items %}
+                    <article class="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+                        <div class="flex flex-wrap justify-between items-start gap-2">
+                            <div class="min-w-0 flex-1">
+                                <h3 class="font-semibold text-gray-800 break-words">{{ app.nombre }}</h3>
+                                <p class="text-xs text-gray-500 font-mono break-all">{{ app.slug }}</p>
+                            </div>
+                            {% if app.activo %}
+                            <span class="shrink-0 inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">Activo</span>
+                            {% else %}
+                            <span class="shrink-0 inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">Inactivo</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-sm text-gray-600 space-y-1">
+                            <p><span class="font-medium text-gray-700">Categoría:</span> {{ app.categoria.nombre }}</p>
+                            {% if app.version %}<p><span class="font-medium text-gray-700">Versión:</span> {{ app.version }}</p>{% endif %}
+                            <p class="break-all"><span class="font-medium text-gray-700">URL:</span> {{ app.url_destino }}</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button type="button" class="btn btn-secondary min-h-[44px] inline-flex justify-center items-center edit-app-btn"
+                                    data-edit-url="{{ url_for('admin.editar_aplicacion', id=app.id) }}"
+                                    data-categoria="{{ app.categoria_id }}" data-tipo="{{ app.tipo_aplicacion_id }}"
+                                    data-nombre="{{ app.nombre }}" data-slug="{{ app.slug }}"
+                                    data-url="{{ app.url_destino }}" data-desc="{{ app.descripcion or '' }}"
+                                    data-version="{{ app.version or '' }}" data-orden="{{ app.orden }}">Editar</button>
+                            <form action="{{ url_for('admin.toggle_aplicacion', id=app.id) }}" method="POST" class="m-0 min-w-0">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn {% if app.activo %}btn-warning{% else %}btn-primary{% endif %} w-full min-h-[44px] inline-flex justify-center items-center">{{ 'Desactivar' if app.activo else 'Activar' }}</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% else %}
+                    <p class="rounded-lg bg-gray-50 py-8 px-4 text-center text-gray-500">No hay aplicaciones registradas.</p>
+                    {% endfor %}
+                </div>
                 {{ render_pagination(pagination, 'admin.aplicaciones') }}
             </div>
-        </div>
+        </section>
 
     </div>
 </div>
 
 {# --- MODAL DE EDICIÓN --- #}
-<div id="edit-app-modal" class="fixed inset-0 z-50 items-center justify-center hidden bg-black bg-opacity-50 backdrop-blur-sm flex overflow-y-auto">
-    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 transform transition-all scale-100 my-8">
+<div id="edit-app-modal" class="fixed inset-0 z-[9998] hidden items-center justify-center bg-black/60 backdrop-blur-sm overflow-y-auto p-4" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="titulo-editar-app">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6">
         <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-bold text-gray-800">Editar Aplicación</h3>
-            <button type="button" id="close-edit-modal" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+            <h3 id="titulo-editar-app" class="text-xl font-bold text-gray-800">Editar Aplicación</h3>
+            <button type="button" id="close-edit-modal" aria-label="Cerrar ventana de edición" class="shrink-0 p-2 rounded text-gray-500 hover:text-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600">
                 <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
         </div>
@@ -185,9 +224,9 @@
         <form id="edit-app-form" method="POST" action="" class="space-y-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Categoría *</label>
+                    <label for="edit-categoria" class="block text-sm font-bold text-gray-700 mb-1">Categoría *</label>
                     <select name="categoria_id" id="edit-categoria" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
                         {% for cat in todas_categorias %}
                             <option value="{{ cat.id }}">{{ cat.nombre }}{% if not cat.activo %} (inactiva){% endif %}</option>
@@ -195,7 +234,7 @@
                     </select>
                 </div>
                 <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Tipo *</label>
+                    <label for="edit-tipo" class="block text-sm font-bold text-gray-700 mb-1">Tipo *</label>
                     <select name="tipo_aplicacion_id" id="edit-tipo" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
                         {% for tipo in todos_tipos %}
                             <option value="{{ tipo.id }}">{{ tipo.nombre }}{% if not tipo.activo %} (inactivo){% endif %}</option>
@@ -204,41 +243,41 @@
                 </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
+                    <label for="edit-nombre" class="block text-sm font-bold text-gray-700 mb-1">Nombre *</label>
                     <input type="text" name="nombre" id="edit-nombre" maxlength="150" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
                 </div>
                 <div class="col-span-2 sm:col-span-1">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Slug</label>
+                    <label for="edit-slug" class="block text-sm font-bold text-gray-700 mb-1">Slug</label>
                     <input type="text" id="edit-slug" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-gray-100 text-gray-500 cursor-not-allowed" readonly title="El identificador único no puede ser modificado después de la creación.">
                 </div>
             </div>
 
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">URL Destino *</label>
+                <label for="edit-url" class="block text-sm font-bold text-gray-700 mb-1">URL Destino *</label>
                 <input type="url" name="url_destino" id="edit-url" maxlength="500" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
             </div>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">Descripción Breve</label>
+                <label for="edit-desc" class="block text-sm font-bold text-gray-700 mb-1">Descripción Breve</label>
                 <textarea name="descripcion" id="edit-desc" maxlength="255" rows="2" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
             </div>
             
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Versión</label>
+                    <label for="edit-version" class="block text-sm font-bold text-gray-700 mb-1">Versión</label>
                     <input type="text" name="version" id="edit-version" maxlength="50" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Orden *</label>
+                    <label for="edit-orden" class="block text-sm font-bold text-gray-700 mb-1">Orden *</label>
                     <input type="number" name="orden" id="edit-orden" min="1" max="2147483647" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
                 </div>
             </div>
 
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" id="cancel-edit-modal" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">Cancelar</button>
-                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold">Guardar Cambios</button>
+            <div class="grid grid-cols-1 sm:flex sm:justify-end gap-2 sm:gap-3 pt-4 border-t border-gray-100">
+                <button type="button" id="cancel-edit-modal" class="order-2 sm:order-1 min-h-[44px] px-4 py-2.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition text-sm font-semibold">Cancelar</button>
+                <button type="submit" class="order-1 sm:order-2 min-h-[44px] px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-semibold">Guardar Cambios</button>
             </div>
         </form>
     </div>
@@ -261,47 +300,65 @@ document.addEventListener('DOMContentLoaded', () => {
                 .normalize('NFD') // Elimina tildes y diacríticos
                 .replace(/[\u0300-\u036f]/g, '')
                 .replace(/[^a-z0-9\s_]/g, '') // Remueve caracteres especiales (mantiene espacios y guiones bajos)
-                .replace(/[\s_]+/g, '_'); // Reemplaza espacios/guiones bajos consecutivos por un solo guion bajo
+                .replace(/[\s_]+/g, '_').replace(/^_+|_+$/g, '');
         });
     }
 
-    // Modal de Edición
-    const editModal = document.getElementById('edit-app-modal');
-    const editForm = document.getElementById('edit-app-form');
-    
-    const editCat = document.getElementById('edit-categoria');
-    const editTipo = document.getElementById('edit-tipo');
-    const editNombre = document.getElementById('edit-nombre');
-    const editSlug = document.getElementById('edit-slug');
-    const editUrl = document.getElementById('edit-url');
-    const editDesc = document.getElementById('edit-desc');
-    const editVersion = document.getElementById('edit-version');
-    const editOrden = document.getElementById('edit-orden');
-    
-    const closeBtns = [document.getElementById('close-edit-modal'), document.getElementById('cancel-edit-modal')];
+    // Edición: la URL llega renderizada por Flask en data-edit-url.
+    const modal = document.getElementById('edit-app-modal');
+    const form = document.getElementById('edit-app-form');
+    const fields = {
+        categoria: document.getElementById('edit-categoria'),
+        tipo: document.getElementById('edit-tipo'),
+        nombre: document.getElementById('edit-nombre'),
+        slug: document.getElementById('edit-slug'),
+        url: document.getElementById('edit-url'),
+        desc: document.getElementById('edit-desc'),
+        version: document.getElementById('edit-version'),
+        orden: document.getElementById('edit-orden')
+    };
+    const closeButtons = [document.getElementById('close-edit-modal'), document.getElementById('cancel-edit-modal')];
+    let previousFocus = null;
 
-    document.querySelectorAll('.edit-app-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            editCat.value = this.dataset.categoria;
-            editTipo.value = this.dataset.tipo;
-            editNombre.value = this.dataset.nombre;
-            editSlug.value = this.dataset.slug;
-            editUrl.value = this.dataset.url;
-            editDesc.value = this.dataset.desc;
-            editVersion.value = this.dataset.version;
-            editOrden.value = this.dataset.orden;
-            
-            editForm.action = `/admin/editar_aplicacion/${this.dataset.id}`;
-            editModal.classList.remove('hidden');
+    function closeModal() {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('overflow-hidden');
+        if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+    }
+
+    document.querySelectorAll('.edit-app-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            previousFocus = button;
+            for (const [key, element] of Object.entries(fields)) {
+                element.value = button.dataset[key] ?? '';
+            }
+            form.action = button.dataset.editUrl;
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('overflow-hidden');
+            fields.categoria.focus();
         });
     });
 
-    closeBtns.forEach(btn => {
-        if (btn) btn.addEventListener('click', () => editModal.classList.add('hidden'));
+    closeButtons.forEach(button => button?.addEventListener('click', closeModal));
+    modal.addEventListener('click', event => { if (event.target === modal) closeModal(); });
+    modal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+        if (event.key !== 'Tab') return;
+        const targets = [...modal.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href]')]
+            .filter(element => element.getClientRects().length);
+        if (!targets.length) return;
+        if (event.shiftKey && document.activeElement === targets[0]) {
+            event.preventDefault(); targets[targets.length - 1].focus();
+        } else if (!event.shiftKey && document.activeElement === targets[targets.length - 1]) {
+            event.preventDefault(); targets[0].focus();
+        }
     });
-
-    editModal.addEventListener('click', (e) => {
-        if (e.target === editModal) editModal.classList.add('hidden');
+    window.addEventListener('pageshow', () => {
+        if (!modal.classList.contains('hidden')) closeModal();
     });
 });
 </script>
