@@ -1,51 +1,74 @@
-# crear_superadmin.py
-from app import create_app
-from models import db, Usuario, RolAplicacion
+"""Crea una cuenta administrativa inicial de forma interactiva.
 
-app = create_app()
+Ejecutar tras inicializar la base de datos:
+    python crear_superadmin.py
+"""
+
+from getpass import getpass
+
+from sqlalchemy.exc import SQLAlchemyError
+
+from app import create_app
+from models import db, RolAplicacion, Usuario
+from utils.security import password_valida
 
 def crear_admin():
+    app = create_app()
     with app.app_context():
-        print("\n--- CREACIÓN DE SUPER ADMINISTRADOR GLOBAL ---")
-        print("Sistema: Portal de Acceso Institucional\n")
-        
-        # 1. Verificar que el rol 'Admin' exista (validación de catálogos base)
+        print('\n--- CREACIÓN DE ADMINISTRADOR INICIAL ---\n')
+
         rol_admin = RolAplicacion.query.filter_by(nombre='Admin').first()
-        if not rol_admin:
-            print("❌ Error: El rol 'Admin' no existe en la tabla roles_aplicacion.")
-            print("Asegúrate de haber ejecutado los INSERTS iniciales en el script SQL.")
-            return
+        if rol_admin is None:
+            print('Error: no existe el rol Admin. Ejecuta primero inicializar_bd.py.')
+            return 1
 
-        email = input("Ingresa el email del nuevo Admin (ej: admin@mahosalud.cl): ").strip()
-        
-        # 2. Verificar si el usuario ya existe para evitar duplicidad
+        nombre = input('Nombre completo: ').strip()
+        if not nombre or len(nombre) > 255:
+            print('Error: el nombre debe tener entre 1 y 255 caracteres.')
+            return 1
+
+        email = input('Correo electrónico: ').strip().lower()
+        # Validación práctica básica; no sustituye comprobaciones del servidor de correo.
+        from email_validator import EmailNotValidError, validate_email
+        try:
+            email = validate_email(email, check_deliverability=False).normalized
+        except EmailNotValidError:
+            print('Error: ingresa un correo electrónico válido.')
+            return 1
+        if len(email) > 255:
+            print('Error: el correo es demasiado largo.')
+            return 1
+
         if Usuario.query.filter_by(email=email).first():
-            print(f"❌ Error: El email {email} ya está registrado en el sistema.")
-            return
-        
-        password = input("Ingresa la contraseña: ").strip()
-        nombre = input("Ingresa el nombre completo (Ej: Super Administrador): ").strip()
+            print('Error: ya existe una cuenta registrada con ese correo.')
+            return 1
 
-        # 3. Crear el usuario con el nuevo modelo de datos
-        nuevo_admin = Usuario(
-            nombre_completo=nombre or "Super Administrador",
+        clave = getpass('Contraseña (mínimo 8 caracteres, mayúscula y número): ')
+        confirmar = getpass('Confirmar contraseña: ')
+        if not password_valida(clave, confirmar):
+            print('Error: las contraseñas deben coincidir y cumplir los requisitos.')
+            return 1
+
+        usuario = Usuario(
+            nombre_completo=nombre,
             email=email,
             rol_id=rol_admin.id,
             activo=True,
-            cambio_clave_requerido=False # Es el Admin raíz, asumimos que su clave inicial es segura
+            activacion_pendiente=False,
+            cambio_clave_requerido=False,
         )
-        
-        # Hasheo de contraseña utilizando el método del modelo
-        nuevo_admin.set_password(password)
-        
+        usuario.set_password(clave)
         try:
-            db.session.add(nuevo_admin)
+            db.session.add(usuario)
             db.session.commit()
-            print(f"\n✅ ¡Éxito! Usuario '{email}' creado correctamente con rol de Administrador.")
-            print("Ya puedes levantar el servidor con 'python app.py' e iniciar sesión.")
-        except Exception as e:
-            print(f"\n❌ Error al guardar en la base de datos: {e}")
+        except SQLAlchemyError:
             db.session.rollback()
+            app.logger.exception('Error al crear el administrador inicial')
+            print('Error: no fue posible guardar la cuenta. Revisa los registros del servidor.')
+            return 1
+
+        print('\nAdministrador creado correctamente. Inicia Flask y accede a /login.')
+        return 0
 
 if __name__ == '__main__':
-    crear_admin()
+    raise SystemExit(crear_admin())

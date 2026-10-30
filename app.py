@@ -3,6 +3,7 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, redirect, url_for, flash, render_template, request, session
 from flask_wtf.csrf import CSRFError
+from sqlalchemy.engine import URL
 
 # Importamos extensiones y modelos
 from extensions import login_manager, csrf
@@ -39,7 +40,14 @@ def create_app():
     if not all([db_host, db_port, db_user, db_pass, db_name]):
         raise RuntimeError("Error crítico: Configuración de base de datos incompleta en el archivo .env")
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}'
+    app.config['SQLALCHEMY_DATABASE_URI'] = URL.create(
+        drivername='mysql+pymysql',
+        username=db_user,
+        password=db_pass,
+        host=db_host,
+        port=int(db_port),
+        database=db_name,
+    )
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024 # Límite de 32MB
 
@@ -174,15 +182,8 @@ def load_user(user_id):
 
 if __name__ == '__main__':
     app = create_app()
-    with app.app_context():
-        try:
-            db.create_all()
-            print("✅ Portal de Acceso inicializado. Tablas verificadas en MySQL.")
-        except Exception as e:
-            print(f"❌ Error al conectar con BD: {e}")
-
     app.run(
-        debug=os.getenv("FLASK_DEBUG", "0") == "1",
-        host="0.0.0.0",
-        port=5000
+        debug=os.getenv('FLASK_DEBUG', '0') == '1',
+        host='127.0.0.1',
+        port=5000,
     )
